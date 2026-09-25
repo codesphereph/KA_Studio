@@ -445,7 +445,7 @@
    Paste your Apps Script /exec URL below. Same URL as download.html.
    ══════════════════════════════════════════════════════════ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
-const NEEDS_API_VERSION = 18;
+const NEEDS_API_VERSION = 25;
 
 /* ---------- transport ---------- */
 
@@ -1400,7 +1400,8 @@ async function waitForJobs(){
     document.getElementById('finishBtn').disabled = false;
   }catch(e){
     warn.style.display = 'block';
-    warn.textContent = 'The collage could not be assembled: ' + e.message;
+    warn.textContent = 'The collage could not be assembled: ' + e.message +
+      '. Your three photos are safe — show this to the staff and they can rebuild it.';
   }
 }
 
@@ -1417,6 +1418,31 @@ function containDraw(ctx, img, x, y, w, h){
   const s = Math.min(w / img.width, h / img.height);
   const dw = img.width * s, dh = img.height * s;
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+/**
+ * Gets one AI shot as a drawable image.
+ *
+ * Normally the server hands back a small preview inline. If that is missing or
+ * will not decode, the image is streamed through the server in cache-sized
+ * pieces instead — the same route the backdrops use, which is not limited by
+ * how much fits in one JSON response. Either way the canvas stays untainted,
+ * so the finished collage can still be exported.
+ */
+async function loadShotImage(r){
+  if (r && r.dataUrl){
+    try { return await loadImage(r.dataUrl); }
+    catch (e) { /* truncated or unreadable — stream it instead */ }
+  }
+  if (!r || !r.fileId) throw new Error('that photo did not come back from the server');
+
+  const prep = await api('prepareBackground', { fileId: r.fileId, width: 1100 });
+  if (!prep || !prep.chunks) throw new Error('the server sent no image data');
+  let b64 = '';
+  for (let i = 0; i < prep.chunks; i++){
+    b64 += (await api('getBackgroundChunk', { token: prep.token, index: i })).data;
+  }
+  return await loadImage('data:' + prep.mimeType + ';base64,' + b64);
 }
 
 async function buildCollage(){
@@ -1444,7 +1470,7 @@ async function buildCollage(){
   }
 
   // the three AI shots
-  const imgs = await Promise.all(S.jobs.map(j => loadImage(j.result.dataUrl)));
+  const imgs = await Promise.all(S.jobs.map(j => loadShotImage(j.result)));
   for (let i = 0; i < G.slots.length; i++){
     const s = G.slots[i];
     const img = imgs[i];
