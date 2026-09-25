@@ -748,8 +748,11 @@ function drawIntoQuad(ctx, img, q, clipQ){
 /** Shot i on a poster layout: 'wide' (3:2) or 'tall' (2:3), whichever fits its frame. */
 function shotShape(i){
   const L = S.layout;
-  if (!L || !L.poster || !L.slots[i]) return 'tall';
-  return slotAspect((L.fit && L.fit[i]) || L.slots[i]) > 1.15 ? 'wide' : 'tall';
+  if (!L) return 'tall';
+  if (L.poster) return L.slots[i] && slotAspect((L.fit && L.fit[i]) || L.slots[i]) > 1.15 ? 'wide' : 'tall';
+  // Normal layouts: the slot is [x, y, w, h] in this theme's orientation.
+  const s = geom(L).slots[i];
+  return s && s[2] / s[3] > 1.15 ? 'wide' : 'tall';
 }
 
 async function buildPosterCollage(L){
@@ -1906,12 +1909,16 @@ async function assembleCollage(){
 }
 
 /* ══════════════ COLLAGE (plain canvas — no AI, no extra cost) ══════════════ */
-function coverDraw(ctx, img, x, y, w, h){
+function coverDraw(ctx, img, x, y, w, h, focusY){
   const s = Math.max(w / img.width, h / img.height);
   const dw = img.width * s, dh = img.height * s;
+  // When the photo is cropped top-and-bottom, keep the upper part (the faces)
+  // rather than the middle (the chests).
+  const fy = focusY == null ? 0.5 : focusY;
+  const oy = Math.min(0, Math.max(h - dh, h / 2 - dh * fy));
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.drawImage(img, x + (w - dw) / 2, y + oy, dw, dh);
   ctx.restore();
 }
 function containDraw(ctx, img, x, y, w, h){
@@ -2084,14 +2091,14 @@ async function buildCollage(){
       x.fillStyle = '#FFFDF8';
       x.fillRect(s[0] - pad, s[1] - pad, s[2] + pad * 2, s[3] + pad * 2 + foot);
       x.shadowColor = 'transparent';
-      coverDraw(x, img, s[0], s[1], s[2], s[3]);
+      coverDraw(x, img, s[0], s[1], s[2], s[3], 0.4);
     } else {
       x.shadowColor = 'rgba(0,0,0,.34)'; x.shadowBlur = 26; x.shadowOffsetY = 8;
       x.fillStyle = '#fff';
       roundRect(x, s[0] - 8, s[1] - 8, s[2] + 16, s[3] + 16, 26); x.fill();
       x.shadowColor = 'transparent';
       x.save(); roundRect(x, s[0], s[1], s[2], s[3], 20); x.clip();
-      coverDraw(x, img, s[0], s[1], s[2], s[3]);
+      coverDraw(x, img, s[0], s[1], s[2], s[3], 0.4);
       x.restore();
     }
     x.restore();
