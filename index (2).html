@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0E1017">
+<title>King Arthur Studio and the AI Booth</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./favicon.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KA AI Booth">
+<meta name="format-detection" content="telephone=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0E1017; --surface:#191C26; --raise:#222634; --line:#2E3444;
+    --text:#ECEEF3; --muted:#8B93A7;
+    --primary:#7B7BE8; --gold:#D9B45B; --ok:#34C77B; --bad:#F2555A;
+    --pad:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+    background:var(--ink);color:var(--text);
+    overscroll-behavior:none;
+  }
+  .app{
+    min-height:100dvh;display:flex;flex-direction:column;
+    max-width:520px;margin:0 auto;
+    padding:calc(env(safe-area-inset-top) + 10px) var(--pad)
+            calc(env(safe-area-inset-bottom) + 14px);
+  }
+
+  /* ---- topbar ---- */
+  .top{display:flex;align-items:center;gap:10px;margin-bottom:14px;min-height:34px}
+  .top .back{
+    width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:11px;
+    background:var(--surface);color:var(--text);display:none;place-items:center;cursor:pointer
+  }
+  .top .back.on{display:grid}
+  .wordmark{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:.08em;
+    text-transform:uppercase;line-height:1}
+  .wordmark em{font-style:normal;color:var(--gold)}
+  .steps{margin-left:auto;display:flex;gap:5px;align-items:center}
+  .steps i{width:20px;height:3px;border-radius:2px;background:var(--line);display:block}
+  .steps i.on{background:var(--gold)}
+
+  /* ---- screens ---- */
+  .screen{display:none;flex:1;flex-direction:column;gap:14px;animation:in .22s ease}
+  .screen.active{display:flex}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.screen{animation:none}}
+
+  h2{font-family:'Oswald',sans-serif;font-weight:600;font-size:26px;line-height:1.1;
+     letter-spacing:.01em}
+  .lede{color:var(--muted);font-size:14px;line-height:1.5}
+
+  /* ---- buttons ---- */
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+    padding:16px;border:0;border-radius:14px;background:var(--primary);color:#fff;
+    font:700 16px 'Inter',sans-serif;cursor:pointer;transition:transform .1s
+  }
+  .btn:active{transform:scale(.985)}
+  .btn:disabled{opacity:.35;cursor:default}
+  .btn.gold{background:var(--gold);color:#171310}
+  .btn.quiet{background:var(--surface);color:var(--text);border:1px solid var(--line)}
+  .btn.slim{padding:12px;font-size:14px}
+  .btn:focus-visible,.pick:focus-visible,.key:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .btnrow{display:flex;gap:10px}
+
+  /* ---- landing ---- */
+  .marquee{
+    border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--surface);
+    position:relative;padding:30px 22px 26px;text-align:center
+  }
+  .marquee:before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 50% 0%, rgba(217,180,91,.18), transparent 62%);
+  }
+  .marquee > *{position:relative}
+  .marquee .bulbs{display:flex;justify-content:center;gap:9px;margin-bottom:18px}
+  .marquee .bulbs span{width:7px;height:7px;border-radius:50%;background:var(--gold);opacity:.35}
+  .marquee .bulbs span:nth-child(2n){opacity:.9}
+  .marquee h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:38px;line-height:.98;
+    letter-spacing:.02em;text-transform:uppercase}
+  .marquee h1 span{display:block;color:var(--gold)}
+  .marquee .tag{color:var(--muted);font-size:14px;margin-top:12px;line-height:1.5}
+  .price{font-family:'Oswald',sans-serif;font-size:46px;color:var(--gold);margin-top:16px;line-height:1}
+  .price small{display:block;font-family:'Inter',sans-serif;font-size:12px;color:var(--muted);
+    margin-top:6px;letter-spacing:.02em}
+
+  .how{display:flex;flex-direction:column;gap:2px}
+  .how li{display:flex;gap:13px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line);
+    list-style:none;font-size:14px;line-height:1.45}
+  .how li:last-child{border:0}
+  .how b{font-family:'Oswald',sans-serif;font-size:15px;color:var(--gold);width:16px;flex:none;
+    text-align:center;padding-top:1px}
+
+  /* ---- pickers ---- */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .pick{
+    border:1.5px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);
+    padding:13px;text-align:left;cursor:pointer;font:inherit;display:flex;flex-direction:column;gap:3px
+  }
+  .pick.on{border-color:var(--gold);background:var(--raise)}
+  .pick .t{font-weight:700;font-size:14px}
+  .pick .s{font-size:11.5px;color:var(--muted);line-height:1.35}
+  .pick .e{font-size:22px;line-height:1;margin-bottom:3px}
+  .pick img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:9px;background:var(--raise);
+    margin-bottom:7px}
+  .pick svg.lay{width:100%;height:auto;display:block;margin-bottom:8px}
+  .lay .cell{fill:#39405a}
+  .lay .bgc{fill:#4a4331}
+  .pick.on .lay .cell{fill:var(--primary)}
+  .pick.on .lay .bgc{fill:var(--gold)}
+
+  /* how much the AI changes: two wide options, not a toggle — a toggle hides
+     what the other state does, and this choice changes what they get back */
+  .modeseg{display:flex;flex-direction:column;gap:7px}
+  .modeseg button{
+    display:flex;align-items:flex-start;gap:10px;text-align:left;padding:12px 13px;
+    border:1.5px solid var(--line);border-radius:13px;background:var(--surface);
+    color:var(--text);font:inherit;cursor:pointer
+  }
+  .modeseg button.on{border-color:var(--gold);background:var(--raise)}
+  .modeseg .tick{
+    width:19px;height:19px;flex:none;margin-top:1px;border-radius:50%;
+    border:1.5px solid var(--line);display:grid;place-items:center;font-size:11px;color:transparent
+  }
+  .modeseg button.on .tick{border-color:var(--gold);background:var(--gold);color:#171310}
+  .modeseg b{display:block;font-size:13.5px;font-weight:700}
+  .modeseg span.d{display:block;font-size:11.5px;color:var(--muted);line-height:1.35;margin-top:2px}
+
+  /* searchable character picker */
+  .combo{position:relative}
+  .combo input{width:100%;padding:14px 40px 14px 14px;border:1.5px solid var(--line);
+    border-radius:13px;background:var(--surface);color:var(--text);
+    font:600 15px 'Inter',sans-serif;outline:none;-webkit-appearance:none}
+  .combo input:focus{border-color:var(--gold)}
+  .combo input::placeholder{color:var(--muted);font-weight:400}
+  .combo .caret{position:absolute;right:13px;top:50%;transform:translateY(-50%);
+    pointer-events:none;color:var(--muted);font-size:12px}
+  .combo.picked input{border-color:var(--gold);color:var(--gold)}
+  .options{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;
+    background:var(--raise);border:1px solid var(--line);border-radius:13px;
+    max-height:46dvh;overflow-y:auto;display:none;
+    box-shadow:0 18px 40px rgba(0,0,0,.55)}
+  .options.open{display:block}
+  .opt{padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
+  .opt:last-child{border-bottom:0}
+  .opt[aria-selected="true"],.opt:hover{background:var(--surface)}
+  .opt b{display:block;font-size:14px;font-weight:700}
+  .opt span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+  .opt mark{background:transparent;color:var(--gold)}
+  .optempty{padding:16px 14px;font-size:13px;color:var(--muted);text-align:center}
+  .optgroup{padding:8px 14px 5px;font-size:10.5px;font-weight:700;color:var(--muted);
+    letter-spacing:.06em;background:var(--ink)}
+
+  .scroller{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px 4px}
+
+  /* ---- shot setup ---- */
+  .shotbar{display:flex;gap:7px;align-items:center;font-size:12px;color:var(--muted)}
+  .shotbar .dot{width:26px;height:26px;border-radius:9px;border:1px solid var(--line);
+    display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--muted)}
+  .shotbar .dot.now{border-color:var(--gold);color:var(--gold)}
+  .shotbar .dot.done{background:var(--ok);border-color:var(--ok);color:#0b2418}
+  .seg{display:flex;gap:7px}
+  .seg button{flex:1;padding:13px 0;border:1.5px solid var(--line);border-radius:12px;
+    background:var(--surface);color:var(--text);font:700 16px 'Inter',sans-serif;cursor:pointer}
+  .seg button.on{border-color:var(--gold);background:var(--raise);color:var(--gold)}
+  .who{font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600}
+  .who b{color:var(--text)}
+
+  /* ---- camera ---- */
+  /* Locked to 2:3 — the exact crop that is sent to the AI, so what the group
+     sees in the preview is what the AI receives. No surprise cropping. */
+  .stage{
+    position:relative;width:100%;aspect-ratio:2/3;max-height:62dvh;margin:0 auto;
+    border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--line)
+  }
+  .stage video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+  .stage video.rear{transform:none}
+  #count{
+    position:absolute;inset:0;display:none;place-items:center;
+    font-family:'Oswald',sans-serif;font-size:130px;color:#fff;
+    text-shadow:0 6px 40px rgba(0,0,0,.7);background:rgba(0,0,0,.22)
+  }
+  #count.go{font-size:52px;letter-spacing:.06em}
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .16s}
+  .camtools{position:absolute;left:12px;top:12px;display:flex;gap:8px}
+  .camtools button{width:38px;height:38px;border-radius:12px;border:1px solid rgba(255,255,255,.28);
+    background:rgba(0,0,0,.45);color:#fff;display:grid;place-items:center;cursor:pointer}
+  .tip{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(14,16,23,.82);
+    border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;
+    color:var(--text);line-height:1.4}
+  .shot-preview{width:100%;border-radius:16px;border:1px solid var(--line);display:block}
+
+  /* ---- status list ---- */
+  .jobs{display:flex;flex-direction:column;gap:8px}
+  .job{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:13px;background:var(--surface);font-size:13px}
+  .job .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+    background:var(--raise);font-size:13px}
+  .job.ok .ic{background:rgba(52,199,123,.16);color:var(--ok)}
+  .job.err .ic{background:rgba(242,85,90,.16);color:var(--bad)}
+  .job .m{color:var(--muted);font-size:11.5px}
+  .spin{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--gold);
+    border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- result ---- */
+  .qrwrap{background:#fff;border-radius:18px;padding:14px;display:grid;place-items:center}
+  .qrwrap img{width:100%;max-width:250px;display:block}
+  .pinchip{font-family:'Oswald',sans-serif;font-size:32px;letter-spacing:.22em;color:var(--gold);
+    text-align:center;border:1px dashed var(--line);border-radius:13px;padding:11px}
+  .files{display:flex;flex-direction:column;gap:8px}
+  .file{display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--line);
+    border-radius:13px;background:var(--surface)}
+  .file img{width:46px;height:46px;object-fit:cover;border-radius:9px;background:var(--raise);flex:none}
+  .file .n{flex:1;font-size:13px;font-weight:600}
+  .file a{background:var(--ok);color:#082116;text-decoration:none;font:700 12px 'Inter',sans-serif;
+    padding:9px 13px;border-radius:10px;white-space:nowrap}
+
+  /* ---- modal + keypad ---- */
+  .modal{position:fixed;inset:0;background:rgba(8,9,13,.8);backdrop-filter:blur(6px);
+    display:none;align-items:flex-end;justify-content:center;z-index:60}
+  .modal.on{display:flex}
+  .sheet{background:var(--surface);border:1px solid var(--line);border-bottom:0;
+    border-radius:22px 22px 0 0;padding:22px var(--pad) calc(env(safe-area-inset-bottom) + 22px);
+    width:100%;max-width:520px}
+  .pinbox{display:flex;gap:8px;justify-content:center;margin:16px 0 6px}
+  .pinbox i{width:100%;max-width:46px;aspect-ratio:3/4;border:1.5px solid var(--line);
+    border-radius:11px;display:grid;place-items:center;font-family:'Oswald',sans-serif;
+    font-size:27px;font-style:normal;background:var(--ink)}
+  .pinbox i.f{border-color:var(--gold);color:var(--gold)}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .key{padding:16px 0;border:1px solid var(--line);border-radius:13px;background:var(--ink);
+    color:var(--text);font:600 21px 'Inter',sans-serif;cursor:pointer}
+  .key:active{background:var(--raise)}
+
+  .note{font-size:12.5px;color:var(--muted);line-height:1.5;text-align:center}
+  .note.err{color:var(--bad)} .note.ok{color:var(--ok)}
+  .banner{border:1px solid var(--bad);background:rgba(242,85,90,.1);color:#FFC9CB;
+    border-radius:13px;padding:11px 13px;font-size:13px;line-height:1.45}
+  .icon{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  canvas.hide{display:none}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <g id="i-left"><path d="M15 18l-6-6 6-6"/></g>
+  <g id="i-right"><path d="M9 18l6-6-6-6"/></g>
+  <g id="i-check"><path d="M20 6L9 17l-5-5"/></g>
+  <g id="i-cam"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></g>
+  <g id="i-flip"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></g>
+  <g id="i-dl"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></g>
+</defs></svg>
+
+<noscript>
+  <div style="max-width:520px;margin:40px auto;padding:20px;border:1px solid #F2555A;
+              border-radius:14px;background:rgba(242,85,90,.1);color:#FFC9CB;
+              font:15px/1.5 system-ui,sans-serif">
+    <b>JavaScript is switched off in this browser.</b><br>
+    The booth needs it to open the camera. Turn JavaScript on in your browser settings,
+    or open this page in Chrome or Safari instead.
+  </div>
+</noscript>
+
+<div class="app">
+
+  <div class="top">
+    <button class="back" id="back" onclick="goBack()" aria-label="Go back">
+      <svg class="icon"><use href="#i-left"/></svg>
+    </button>
+    <div class="wordmark" id="wordmark">King Arthur Studio <em>AI Booth</em></div>
+    <div class="steps" id="steps" aria-hidden="true"></div>
+  </div>
+
+  <!-- 1 ── LANDING ───────────────────────────────────────── -->
+  <div class="screen active" id="scrLanding">
+    <div class="marquee">
+      <div class="bulbs"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <h1>King Arthur Studio<span>and the AI Booth</span></h1>
+      <p class="tag" id="tagline">Three photos on your own phone. AI writes you into the story.</p>
+      <div class="price" id="priceBig">₱200<small id="priceNote">3 high-resolution AI photos + 1 collage, by QR download</small></div>
+    </div>
+
+    <ul class="how">
+      <li><b>1</b><span>Pick a theme for your collage, then a layout.</span></li>
+      <li><b>2</b><span>For each shot, pick one character — everybody becomes it.</span></li>
+      <li><b>3</b><span>Prop up your phone. A 10-second timer gives you time to pose — each shot is final, so pose before it fires.</span></li>
+      <li><b>4</b><span>Scan the QR and download. Your PIN closes after that.</span></li>
+    </ul>
+
+    <div style="flex:1"></div>
+    <div class="banner" id="landingWarn" style="display:none"></div>
+    <button class="btn gold" onclick="openPin()">Enter my PIN</button>
+    <p class="note">Buy a PIN slip from the staff. One slip, one phone.</p>
+  </div>
+
+  <!-- 2 ── THEME (the collage backdrop) ───────────────────── -->
+  <div class="screen" id="scrBg">
+    <div>
+      <h2>Choose your theme</h2>
+      <p class="lede">This is the backdrop your collage is printed on. It also sets whether
+        the collage comes out portrait or landscape.</p>
+    </div>
+    <div class="scroller"><div class="grid2" id="bgGrid"></div></div>
+    <button class="btn" id="bgNext" disabled onclick="go('scrLayout')">
+      Choose layout <svg class="icon"><use href="#i-right"/></svg>
+    </button>
+  </div>
+
+  <!-- 3 ── LAYOUT ────────────────────────────────────────── -->
+  <div class="screen" id="scrLayout">
+    <div>
+      <h2>Choose your layout</h2>
+      <p class="lede" id="layoutLede">How your three AI photos sit on the collage.</p>
+    </div>
+    <div class="scroller"><div class="grid2" id="layoutGrid"></div></div>
+    <button class="btn" id="layoutNext" disabled onclick="startShot(0)">
+      Start shot 1 <svg class="icon"><use href="#i-right"/></svg>
+    </button>
+  </div>
+
+  <!-- 4 ── SHOT SETUP ────────────────────────────────────── -->
+  <div class="screen" id="scrSetup">
+    <div class="shotbar" id="shotBar"></div>
+    <div>
+      <h2 id="setupTitle">Shot 1</h2>
+      <p class="lede" id="setupLede">One character for the whole group. This is what the AI makes.</p>
+    </div>
+    <div id="castArea">
+      <p class="who">Pick one character — everybody becomes it</p>
+      <div class="combo" id="lookCombo">
+        <input id="lookInput" type="text" autocomplete="off" autocapitalize="off"
+               spellcheck="false" role="combobox" aria-expanded="false"
+               aria-controls="lookList" aria-autocomplete="list"
+               placeholder="Search characters — wizard, SWAT, pirate…">
+        <span class="caret">&#9662;</span>
+        <div class="options" id="lookList" role="listbox" aria-label="Looks"></div>
+      </div>
+
+      <p class="who">How much should the AI change?</p>
+      <div class="modeseg" id="modeSeg"></div>
+
+      <p class="who">How many people are in this shot?</p>
+      <div class="seg" id="peopleSeg"></div>
+    </div>
+
+    <div class="scroller" id="charBrowse"></div>
+    <button class="btn gold" id="setupNext" disabled onclick="openCamera()">
+      <svg class="icon"><use href="#i-cam"/></svg> Take shot <span id="setupNum">1</span>
+    </button>
+  </div>
+
+  <!-- 5 ── CAMERA ────────────────────────────────────────── -->
+  <div class="screen" id="scrCam">
+    <div class="shotbar" id="camBar"></div>
+    <div class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="count"></div>
+      <div id="flash"></div>
+      <div class="camtools">
+        <button onclick="flipCam()" aria-label="Switch camera"><svg class="icon"><use href="#i-flip"/></svg></button>
+      </div>
+      <div class="tip" id="camTip">Everyone inside the frame, faces lit and facing the camera. The shot is saved as soon as it is taken.</div>
+    </div>
+    <input type="file" id="nativeCam" accept="image/*" capture="user" style="display:none"
+           onchange="onNativePhoto(this)">
+    <button class="btn gold" id="shootBtn" onclick="startCountdown()">
+      Start <span id="cdLabel">10</span>-second timer
+    </button>
+  </div>
+
+  <!-- 6 ── CHECKOUT ──────────────────────────────────────── -->
+  <div class="screen" id="scrCheckout">
+    <div><h2>Making your photos</h2>
+      <p class="lede" id="checkLede">Hold on — this takes about a minute.</p></div>
+    <div class="jobs" id="jobList"></div>
+    <canvas id="collage" class="hide"></canvas>
+    <img class="shot-preview" id="collagePreview" alt="Your collage" style="display:none">
+    <div style="flex:1"></div>
+    <div class="banner" id="checkoutWarn" style="display:none"></div>
+    <button class="btn gold" id="finishBtn" disabled onclick="finish()">
+      Confirm PIN <span id="checkoutPin"></span> and finish
+    </button>
+  </div>
+
+  <!-- 7 ── DONE ──────────────────────────────────────────── -->
+  <div class="screen" id="scrDone">
+    <div><h2>Your photos are ready</h2>
+      <p class="lede" id="thankYou"></p></div>
+    <div class="qrwrap"><img id="qrImg" alt="QR code to your download page"></div>
+    <div class="pinchip" id="donePin"></div>
+    <p class="note">Scan the QR with another phone, or tap the files below.</p>
+    <div class="files" id="fileList"></div>
+    <div style="flex:1"></div>
+    <button class="btn gold" onclick="endSession()">I've saved them — end session</button>
+    <p class="note" id="doneNote">Ending closes this PIN. Your download page keeps working.</p>
+  </div>
+
+  <!-- 8 ── CLOSED ────────────────────────────────────────── -->
+  <div class="screen" id="scrClosed">
+    <div style="flex:1"></div>
+    <div class="marquee">
+      <h1>That's a wrap</h1>
+      <p class="tag" id="closedMsg">Your photos are saved. Buy a new PIN to shoot again.</p>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn quiet" onclick="location.reload()">Start over with a new PIN</button>
+  </div>
+
+</div>
+
+<!-- PIN sheet -->
+<div class="modal" id="pinModal">
+  <div class="sheet">
+    <h2>Enter your PIN</h2>
+    <p class="lede" id="pinHint">Enter the 6-digit PIN printed on your slip.</p>
+    <div class="pinbox" id="pinDots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p class="note" id="pinMsg">&nbsp;</p>
+    <div class="keypad" id="keypad"></div>
+    <button class="btn gold" id="pinGo" disabled onclick="submitPin()" style="margin-top:12px">Start</button>
+    <button class="btn quiet slim" onclick="closePin()" style="margin-top:8px">Cancel</button>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   King Arthur Studio and the AI Booth
+   Paste your Apps Script /exec URL below. Same URL as download.html.
+   ══════════════════════════════════════════════════════════ */
+const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
+const NEEDS_API_VERSION = 17;
+
+/* ---------- transport ---------- */
+
+// The commonest setup mistake is publishing this file with the placeholder still
+// in it. "Failed to fetch" tells nobody anything, so say what actually happened.
+const API_SET = !/PASTE_YOUR|YOUR_APPS_SCRIPT|^\s*$/.test(API_URL);
+
+async function api(action, payload){
+  if (!API_SET){
+    throw new Error('This page has not been connected to your booth server yet. ' +
+      'Open index.html, replace PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE near the top with ' +
+      'your Apps Script /exec link, and upload it again.');
+  }
+  const res = await fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},   // avoids the CORS preflight
+    body: JSON.stringify(Object.assign({action:action}, payload||{}))
+  });
+  const raw = await res.text();
+  let j;
+  try { j = JSON.parse(raw); }
+  catch(e){
+    throw new Error('The booth server replied with a webpage instead of data. In Apps Script: ' +
+      'Deploy → Manage deployments → Who has access = "Anyone", then deploy a new version.');
+  }
+  if (!j.ok) throw new Error(j.error || 'Server error');
+  return j.data;
+}
+
+/** Fire-and-forget hit logging — see the same helper in download.html. */
+function logHit(payload){
+  try{
+    const body = JSON.stringify(Object.assign({action:'logDownload'}, payload));
+    if (navigator.sendBeacon){
+      navigator.sendBeacon(API_URL, new Blob([body], {type:'text/plain;charset=utf-8'}));
+      return;
+    }
+    fetch(API_URL, { method:'POST', keepalive:true,
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, body:body });
+  }catch(e){ /* logging must never block a download */ }
+}
+
+/* ---------- one stable id per phone ---------- */
+function deviceId(){
+  let d = null;
+  try { d = localStorage.getItem('asb_device'); } catch(e){}
+  if (!d){
+    d = 'D' + Date.now().toString(36).toUpperCase() +
+        Math.random().toString(36).slice(2,8).toUpperCase();
+    try { localStorage.setItem('asb_device', d); } catch(e){}
+  }
+  return d;
+}
+const DEVICE = deviceId();
+
+/* ---------- state ---------- */
+let CFG = { boothTitle:'King Arthur Studio and the AI Booth', countdown:10, shots:3, maxPeople:4,
+            price:'₱200', themes:[], characters:[] };
+let S = {
+  pin:null, sessionId:null,
+  theme:null, bgImage:null, layout:null,
+  shot:0, downloaded:false,
+  setup:[],            // per shot: {characterId, characterName, people, mode}
+  captured:[],         // per shot: dataURL of the original
+  jobs:[],             // per shot: {status:'pending|ok|failed', promise, result, error}
+  done:false
+};
+let stream = null, facing = 'user', nativeMode = false, pendingNative = -1;
+let history = [];
+
+/* ══════════════ COLLAGE LAYOUTS ══════════════
+   Landscape 2100×1500, portrait 1500×2100.
+   A slot is [x, y, w, h] plus an optional rotation in degrees.
+   bgSlot means the backdrop gets its own panel instead of bleeding
+   behind everything; mat is the colour of the card it sits on. */
+const CANVAS = { landscape:{W:2100,H:1500}, portrait:{W:1500,H:2100} };
+
+const LAYOUTS = [
+  { id:'triptych', name:'Triptych', blurb:'Three equal panels',
+    slots:[[95,95,600,1180],[750,95,600,1180],[1405,95,600,1180]],
+    title:{x:1050,y:1420,size:58},
+    portrait:{ slots:[[95,95,1310,550],[95,690,1310,550],[95,1285,1310,550]],
+               title:{x:750,y:1985,size:58} } },
+
+  { id:'hero', name:'Headliner', blurb:'One big, two beside it',
+    slots:[[95,95,1170,1180],[1290,95,715,560],[1290,715,715,560]],
+    title:{x:1050,y:1420,size:58},
+    portrait:{ slots:[[95,95,1310,1090],[95,1225,630,630],[775,1225,630,630]],
+               title:{x:750,y:1985,size:58} } },
+
+  { id:'strip', name:'Filmstrip', blurb:'Stacked wide bands',
+    slots:[[150,90,1800,380],[150,520,1800,380],[150,950,1800,380]],
+    title:{x:1050,y:1430,size:52},
+    portrait:{ slots:[[110,110,1280,545],[110,715,1280,545],[110,1320,1280,545]],
+               title:{x:750,y:1990,size:52} } },
+
+  { id:'marquee', name:'Marquee', blurb:'Backdrop gets its own panel', mat:'#FFFFFF',
+    bgSlot:[95,95,880,1195],
+    slots:[[1005,95,1000,365],[1005,505,1000,365],[1005,915,1000,365]],
+    title:{x:1050,y:1420,size:52},
+    portrait:{ bgSlot:[95,95,1310,690],
+               slots:[[95,820,1310,385],[95,1255,625,600],[780,1255,625,600]],
+               title:{x:750,y:1990,size:52} } },
+
+  { id:'polaroid', name:'Polaroid Toss', blurb:'Tilted prints, scattered', polaroid:true,
+    slots:[[165,420,540,540,-6],[780,360,540,540,4],[1395,430,540,540,-3]],
+    title:{x:1050,y:1370,size:76,script:true},
+    portrait:{ slots:[[150,340,530,530,-6],[820,300,530,530,5],[485,1090,530,530,-3]],
+               title:{x:750,y:1900,size:76,script:true} } },
+];
+
+function orientation(){
+  return (S.theme && S.theme.orientation === 'PORTRAIT') ? 'portrait' : 'landscape';
+}
+function geom(L, mode){
+  mode = mode || orientation();
+  const src = (mode === 'portrait' && L.portrait) ? L.portrait : L;
+  return { W:CANVAS[mode].W, H:CANVAS[mode].H, slots:src.slots, title:src.title,
+           bgSlot:src.bgSlot || null, mat:L.mat || null, polaroid:!!L.polaroid };
+}
+
+/* ══════════════ BOOT ══════════════ */
+// Belt and braces against a blank first paint: whatever happens next, the
+// landing screen is on screen.
+(function(){
+  const l = document.getElementById('scrLanding');
+  if (l && !l.classList.contains('active')) l.classList.add('active');
+})();
+
+api('getConfig')
+  .then(cfg => {
+    CFG = Object.assign(CFG, cfg);
+    document.title = CFG.boothTitle;
+    document.getElementById('wordmark').textContent = CFG.boothTitle;
+    document.getElementById('priceBig').firstChild.nodeValue = CFG.price || '₱200';
+    document.getElementById('priceNote').textContent = CFG.priceNote || '';
+    document.getElementById('pinHint').textContent = CFG.pinInstructions || '';
+    document.getElementById('cdLabel').textContent = CFG.countdown;
+    document.getElementById('tagline').textContent =
+      CFG.shots + ' photos on your own phone. AI writes you into the story.';
+
+    const warn = [];
+    if ((Number(CFG.apiVersion)||0) < NEEDS_API_VERSION){
+      warn.push('The booth server is running old code (v' + (CFG.apiVersion||'?') +
+        ', this page needs v' + NEEDS_API_VERSION + '). In Apps Script: Deploy → ' +
+        'Manage deployments → edit → Version: New version → Deploy.');
+    }
+    if (!CFG.themes.length) warn.push('No themes are set up yet. Put Drive links in the Themes sheet.');
+    if (!CFG.characters.length) warn.push('No characters are set up yet. Fill the Characters sheet.');
+    if (warn.length){
+      const el = document.getElementById('landingWarn');
+      el.style.display = 'block'; el.textContent = warn.join(' ');
+    }
+    buildThemes();
+    buildSteps();
+  })
+  .catch(err => {
+    const el = document.getElementById('landingWarn');
+    el.style.display = 'block';
+    el.textContent = 'Could not reach the booth server: ' + err.message +
+      ' Check API_URL at the top of index.html.';
+  });
+
+/* ══════════════ NAVIGATION ══════════════ */
+const ORDER = ['scrBg','scrLayout','scrSetup','scrCam','scrCheckout','scrDone'];
+
+function go(id, silent){
+  const cur = document.querySelector('.screen.active');
+  if (cur && !silent) history.push(cur.id);
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById('back').classList.toggle('on',
+    history.length > 0 && ['scrBg','scrLayout','scrSetup','scrCam'].indexOf(id) !== -1);
+  buildSteps();
+  window.scrollTo(0,0);
+}
+function goBack(){
+  const prev = history.pop();
+  if (!prev) return;
+  if (document.getElementById('scrCam').classList.contains('active')) stopCamera();
+  go(prev, true);
+}
+function buildSteps(){
+  const cur = document.querySelector('.screen.active');
+  const at = cur ? ORDER.indexOf(cur.id) : -1;
+  document.getElementById('steps').innerHTML =
+    at < 0 ? '' : ORDER.slice(0,5).map((_,i) => '<i class="' + (i<=at?'on':'') + '"></i>').join('');
+}
+
+/* ══════════════ PIN ══════════════ */
+let pinValue = '';
+
+(function buildKeypad(){
+  const k = document.getElementById('keypad');
+  ['1','2','3','4','5','6','7','8','9','clear','0','del'].forEach(key => {
+    const b = document.createElement('button');
+    b.className = 'key';
+    b.textContent = key === 'clear' ? '✕' : key === 'del' ? '⌫' : key;
+    b.setAttribute('aria-label', key === 'clear' ? 'Clear' : key === 'del' ? 'Delete' : key);
+    b.onclick = () => {
+      if (key === 'clear') pinValue = '';
+      else if (key === 'del') pinValue = pinValue.slice(0,-1);
+      else if (pinValue.length < 6) pinValue += key;
+      paintPin();
+    };
+    k.appendChild(b);
+  });
+})();
+
+function paintPin(){
+  const dots = document.getElementById('pinDots').children;
+  for (let i = 0; i < 6; i++){
+    dots[i].textContent = pinValue[i] || '';
+    dots[i].className = pinValue[i] ? 'f' : '';
+  }
+  document.getElementById('pinGo').disabled = pinValue.length !== 6;
+  if (pinValue.length < 6) pinMsg('');
+}
+function pinMsg(t, cls){
+  const el = document.getElementById('pinMsg');
+  el.innerHTML = t || '&nbsp;';
+  el.className = 'note ' + (cls || '');
+}
+function openPin(){
+  pinValue = ''; paintPin(); pinMsg('');
+  document.getElementById('pinModal').classList.add('on');
+}
+function closePin(){ document.getElementById('pinModal').classList.remove('on'); }
+
+function submitPin(){
+  const btn = document.getElementById('pinGo');
+  btn.disabled = true;
+  pinMsg('Checking your PIN…');
+  api('startSession', { pin: pinValue, deviceId: DEVICE })
+    .then(d => {
+      S.pin = d.pin; S.sessionId = d.sessionId;
+      document.getElementById('checkoutPin').textContent = d.pin;
+      closePin();
+      history = [];
+      go('scrBg', true);
+    })
+    .catch(e => { btn.disabled = false; pinMsg(e.message, 'err'); });
+}
+
+/* ══════════════ BACKGROUNDS ══════════════ */
+function buildThemes(){
+  const g = document.getElementById('bgGrid');
+  g.innerHTML = '';
+  CFG.themes.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'pick';
+    b.innerHTML = '<img alt="" src="https://lh3.googleusercontent.com/d/' + t.fileId + '=w500">' +
+                  '<span class="t">' + esc(t.name) + '</span>' +
+                  '<span class="s">' + (t.orientation === 'PORTRAIT' ? 'Portrait' : 'Landscape') +
+                  ' collage</span>';
+    b.onclick = () => selectTheme(t, b);
+    g.appendChild(b);
+  });
+}
+
+function selectTheme(t, card){
+  document.querySelectorAll('#bgGrid .pick').forEach(x => x.classList.remove('on'));
+  card.classList.add('on');
+  S.theme = t; S.bgImage = null; S.layout = null;
+  document.getElementById('bgNext').disabled = true;
+  document.getElementById('bgNext').textContent = 'Loading backdrop…';
+
+  // Pull the backdrop through the server in pieces, so the collage canvas
+  // stays untainted and can still be exported.
+  loadBackdrop(t)
+    .then(img => {
+      S.bgImage = img;
+      const n = document.getElementById('bgNext');
+      n.disabled = false;
+      n.innerHTML = 'Choose layout <svg class="icon"><use href="#i-right"/></svg>';
+      buildLayouts();
+    })
+    .catch(e => {
+      // The collage can still be built on a plain panel, so let them carry on —
+      // but the layout cards must exist either way, or they land on a blank
+      // screen with no way forward.
+      const n = document.getElementById('bgNext');
+      n.disabled = false;
+      n.innerHTML = 'Continue without the backdrop <svg class="icon"><use href="#i-right"/></svg>';
+      buildLayouts();
+      alert('That backdrop could not load, so the collage will use a plain panel. ' +
+            'Tell the staff if this keeps happening.\n\n(' + e.message + ')');
+    });
+}
+
+async function loadBackdrop(theme){
+  const prep = await api('prepareBackground',
+    { fileId: theme.fileId, url: theme.url, width: 1600 });
+  if (!prep || !prep.chunks) throw new Error('the server sent no image data');
+  let b64 = '';
+  for (let i = 0; i < prep.chunks; i++){
+    b64 += (await api('getBackgroundChunk', { token: prep.token, index: i })).data;
+  }
+  return await loadImage('data:' + prep.mimeType + ';base64,' + b64);
+}
+function loadImage(src){
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('image failed to decode'));
+    im.src = src;
+  });
+}
+
+/* ══════════════ LAYOUTS ══════════════ */
+function buildLayouts(){
+  const mode = orientation();
+  document.getElementById('layoutLede').textContent =
+    'How your three AI photos sit on the ' + mode + ' collage.';
+  const g = document.getElementById('layoutGrid');
+  g.innerHTML = '';
+  S.layout = null;
+  document.getElementById('layoutNext').disabled = true;
+
+  LAYOUTS.forEach(L => {
+    const G = geom(L, mode);
+    const b = document.createElement('button');
+    b.className = 'pick';
+    let svg = '<svg class="lay" viewBox="0 0 ' + G.W + ' ' + G.H + '">' +
+      '<rect width="' + G.W + '" height="' + G.H + '" rx="40" fill="#12151d"/>';
+    if (G.bgSlot) svg += '<rect class="bgc" x="' + G.bgSlot[0] + '" y="' + G.bgSlot[1] +
+      '" width="' + G.bgSlot[2] + '" height="' + G.bgSlot[3] + '" rx="22"/>';
+    G.slots.forEach(s => {
+      const rot = s[4] ? ' transform="rotate(' + s[4] + ' ' + (s[0]+s[2]/2) + ' ' + (s[1]+s[3]/2) + ')"' : '';
+      svg += '<rect class="cell" x="' + s[0] + '" y="' + s[1] + '" width="' + s[2] +
+             '" height="' + s[3] + '" rx="22"' + rot + '/>';
+    });
+    svg += '</svg>';
+    b.innerHTML = svg + '<span class="t">' + L.name + '</span>' +
+                  '<span class="s">' + L.blurb + '</span>';
+    b.onclick = () => {
+      document.querySelectorAll('#layoutGrid .pick').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      S.layout = L;
+      document.getElementById('layoutNext').disabled = false;
+    };
+    g.appendChild(b);
+  });
+}
+
+/* ══════════════ SHOT SETUP ══════════════ */
+function shotBarHtml(active){
+  let h = '';
+  for (let i = 0; i < CFG.shots; i++){
+    const cls = i < active ? 'done' : i === active ? 'now' : '';
+    h += '<span class="dot ' + cls + '">' + (i < active ? '✓' : (i+1)) + '</span>';
+  }
+  return h + '<span>Shot ' + (active+1) + ' of ' + CFG.shots + '</span>';
+}
+
+function startShot(i, silent){
+  S.shot = i;
+  if (!S.setup[i]) S.setup[i] = { characterId:null, characterName:'', people:1,
+                                  mode:'full' };
+  document.getElementById('shotBar').innerHTML = shotBarHtml(i);
+  document.getElementById('setupTitle').textContent = 'Shot ' + (i+1);
+  document.getElementById('setupNum').textContent = (i+1);
+  buildShotSetup();
+  go('scrSetup', silent);
+}
+
+function buildShotSetup(){
+  const cur = S.setup[S.shot];
+  buildModeSeg(cur);
+  buildPeopleSeg(cur);
+  buildLookCombo();
+  buildCharBrowse();
+  refreshSetupNext();
+}
+
+/**
+ * How much of the photo the AI is allowed to change.
+ *
+ * "Background only" exists because plenty of customers are already dressed for
+ * the occasion — a bride, a debutante, a barong at a wedding — and replacing
+ * what they are wearing is the last thing they want. It is also the safer of
+ * the two for likeness, since the AI is touching less of the picture.
+ */
+const MODES = [
+  { id:'full',  title:'Background and costume',
+    desc:'The full transformation. Everyone is dressed as the character.' },
+  { id:'scene', title:'Background only',
+    desc:'Keep the clothes you are wearing now. Only the scene around you changes.' },
+];
+
+function buildModeSeg(cur){
+  const seg = document.getElementById('modeSeg');
+  seg.innerHTML = '';
+  MODES.forEach(m => {
+    const b = document.createElement('button');
+    b.className = cur.mode === m.id ? 'on' : '';
+    b.innerHTML = '<span class="tick">\u2713</span><span><b>' + m.title + '</b>' +
+                  '<span class="d">' + m.desc + '</span></span>';
+    b.onclick = () => {
+      cur.mode = m.id;
+      Array.prototype.forEach.call(seg.children, x => x.classList.remove('on'));
+      b.classList.add('on');
+      refreshSetupNext();
+    };
+    seg.appendChild(b);
+  });
+}
+
+function buildPeopleSeg(cur){
+  const seg = document.getElementById('peopleSeg');
+  seg.innerHTML = '';
+  for (let n = 1; n <= (CFG.maxPeople || 4); n++){
+    const b = document.createElement('button');
+    b.textContent = n;
+    b.className = cur.people === n ? 'on' : '';
+    b.onclick = () => {
+      cur.people = n;
+      Array.prototype.forEach.call(seg.children, x => x.classList.remove('on'));
+      b.classList.add('on');
+      refreshSetupNext();
+    };
+    seg.appendChild(b);
+  }
+}
+
+/** The browse list under the search box, grouped by category. */
+function buildCharBrowse(){
+  const cur = S.setup[S.shot];
+  const wrap = document.getElementById('charBrowse');
+  wrap.innerHTML = '';
+  const seen = {};
+  CFG.characters.forEach(c => { seen[c.category] = seen[c.category] || []; seen[c.category].push(c); });
+
+  Object.keys(seen).forEach(cat => {
+    const h = document.createElement('p');
+    h.className = 'who';
+    h.textContent = cat;
+    wrap.appendChild(h);
+    const grid = document.createElement('div');
+    grid.className = 'grid2';
+    seen[cat].forEach(c => {
+      const b = document.createElement('button');
+      b.className = 'pick' + (cur.characterId === c.id ? ' on' : '');
+      b.dataset.char = c.id;
+      b.innerHTML = '<span class="t">' + esc(c.name) + '</span>' +
+                    '<span class="s">' + esc(c.blurb) + '</span>';
+      b.onclick = () => pickCharacter(c);
+      grid.appendChild(b);
+    });
+    wrap.appendChild(grid);
+  });
+}
+
+/** Single place that records a chosen character, whichever way it was chosen. */
+function pickCharacter(c){
+  const cur = S.setup[S.shot];
+  cur.characterId = c.id;
+  cur.characterName = c.name;
+  const input = document.getElementById('lookInput');
+  if (input) input.value = c.name;
+  document.getElementById('lookCombo').classList.add('picked');
+  document.querySelectorAll('#charBrowse .pick').forEach(el => {
+    el.classList.toggle('on', el.dataset.char === c.id);
+  });
+  refreshSetupNext();
+}
+
+/* ══════════════ CHARACTER PICKER ══════════════
+ * A searchable combo rather than a wall of buttons: the list runs to dozens and
+ * keeps growing from the sheet. Matching runs over name, blurb, category and the
+ * Keywords column, so "pulis" finds SWAT and "hogwarts" finds the wizards.
+ * An empty box lists everything, grouped by category, so it browses like a menu. */
+let comboIdx = -1;      // highlighted row, for arrow-key use
+let comboRows = [];     // what is currently on screen
+
+function buildLookCombo(){
+  const cur = S.setup[S.shot];
+  const combo = document.getElementById('lookCombo');
+  const pool = CFG.characters.map(c => ({
+    c: c,
+    hay: (c.name + ' ' + c.blurb + ' ' + c.category + ' ' + (c.keywords || '')).toLowerCase(),
+  }));
+
+  // Replace the node first to drop the previous shot's handlers, then bind
+  // everything below to the live element — holding the old reference would mean
+  // writing the chosen name into a node no longer in the page.
+  const stale = document.getElementById('lookInput');
+  const input = stale.cloneNode(true);
+  stale.parentNode.replaceChild(input, stale);
+
+  input.value = cur.characterName || '';
+  combo.classList.toggle('picked', !!cur.characterId);
+  input.placeholder = 'Search ' + pool.length + ' characters — wizard, SWAT, pirate…';
+
+  const render = q => {
+    const list = document.getElementById('lookList');
+    const needle = String(q || '').trim().toLowerCase();
+
+    comboRows = !needle ? pool.slice()
+      : pool
+          .map(x => {
+            if (x.hay.indexOf(needle) === -1) return null;
+            const n = x.c.name.toLowerCase();
+            // Name matches rank above blurb, category or keyword matches.
+            const rank = n.indexOf(needle) === 0 ? 0 : n.indexOf(needle) > -1 ? 1 : 2;
+            return { x: x, rank: rank };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.rank - b.rank)
+          .map(o => o.x);
+
+    if (!comboRows.length){
+      list.innerHTML = '<div class="optempty">Nothing matches &ldquo;' + esc(q) +
+        '&rdquo;.<br>Try a simpler word, or clear the box to see all ' +
+        pool.length + ' characters.</div>';
+      comboIdx = -1;
+      return;
+    }
+
+    let html = '', lastCat = null;
+    comboRows.forEach((x, i) => {
+      if (x.c.category !== lastCat){
+        html += '<div class="optgroup">' + esc(x.c.category) + '</div>';
+        lastCat = x.c.category;
+      }
+      html += '<div class="opt" role="option" data-i="' + i + '" id="opt' + i + '" ' +
+        'aria-selected="' + (i === comboIdx) + '">' +
+          '<b>' + highlight(x.c.name, needle) + '</b>' +
+          '<span>' + highlight(x.c.blurb, needle) + '</span>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+
+    Array.prototype.forEach.call(list.querySelectorAll('.opt'), el => {
+      // mousedown, not click: it fires before the input's blur closes the list.
+      el.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        const row = comboRows[Number(el.dataset.i)];
+        if (row){ pickCharacter(row.c); closeList(); input.blur(); }
+      });
+    });
+  };
+
+  const openList = () => {
+    document.getElementById('lookList').classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+  };
+  const closeList = () => {
+    document.getElementById('lookList').classList.remove('open');
+    input.setAttribute('aria-expanded', 'false');
+    comboIdx = -1;
+  };
+
+  const move = d => {
+    if (!comboRows.length) return;
+    comboIdx = (comboIdx + d + comboRows.length) % comboRows.length;
+    const list = document.getElementById('lookList');
+    Array.prototype.forEach.call(list.querySelectorAll('.opt'), el => {
+      const on = Number(el.dataset.i) === comboIdx;
+      el.setAttribute('aria-selected', on);
+      if (on) el.scrollIntoView({ block: 'nearest' });
+    });
+    input.setAttribute('aria-activedescendant', 'opt' + comboIdx);
+  };
+
+  input.addEventListener('focus', () => { input.select(); render(''); openList(); });
+  input.addEventListener('input', () => {
+    cur.characterId = null;
+    cur.characterName = '';
+    combo.classList.remove('picked');
+    document.querySelectorAll('#charBrowse .pick').forEach(el => el.classList.remove('on'));
+    comboIdx = -1;
+    render(input.value);
+    openList();
+    refreshSetupNext();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown'){ e.preventDefault(); move(1); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter'){
+      e.preventDefault();
+      const row = comboIdx >= 0 ? comboRows[comboIdx] : comboRows[0];
+      if (row){ pickCharacter(row.c); closeList(); input.blur(); }
+    }
+    else if (e.key === 'Escape'){ closeList(); input.blur(); }
+  });
+  input.addEventListener('blur', () => setTimeout(closeList, 120));
+}
+
+function highlight(text, needle){
+  const t = esc(text || '');
+  if (!needle) return t;
+  const i = t.toLowerCase().indexOf(needle.toLowerCase());
+  if (i === -1) return t;
+  return t.slice(0, i) + '<mark>' + t.slice(i, i + needle.length) + '</mark>' +
+         t.slice(i + needle.length);
+}
+
+function refreshSetupNext(){
+  document.getElementById('setupNext').disabled = !S.setup[S.shot].characterId;
+}
+
+/* ══════════════ CAMERA ══════════════ */
+async function openCamera(silent){
+  document.getElementById('camBar').innerHTML = shotBarHtml(S.shot);
+  // Lock the shutter before the screen is even shown. Otherwise there is a
+  // window — short, but real on a slow phone — where the button from the last
+  // shot is still live and an eager tap starts a countdown against a camera
+  // that has not opened yet.
+  nativeMode = false;
+  setShootEnabled(false);
+  go('scrCam', silent);
+  await startCamera();
+}
+
+/** True once the video is actually producing frames we can copy. */
+function camReady(){
+  const v = document.getElementById('video');
+  return !!(v && v.videoWidth > 0 && v.videoHeight > 0);
+}
+
+/** The shutter stays locked until the camera is really delivering frames. */
+function setShootEnabled(on){
+  const b = document.getElementById('shootBtn');
+  b.disabled = !on;
+  if (nativeMode){ b.textContent = 'Open camera'; return; }
+  b.innerHTML = on
+    ? 'Start <span id="cdLabel">' + (CFG.countdown || 10) + '</span>-second timer'
+    : 'Starting camera\u2026';
+}
+
+async function startCamera(){
+  stopCamera();
+  nativeMode = false;
+  setShootEnabled(false);
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    // Ask for a tall frame at high resolution: the closer the camera's own
+    // aspect is to 2:3, the less of the group is cropped away, and more real
+    // pixels of each face survive into the AI.
+    const tries = [
+      { video:{ facingMode:facing, width:{ideal:1536}, height:{ideal:2304},
+                aspectRatio:{ideal:0.6667} }, audio:false },
+      { video:{ facingMode:facing, width:{ideal:1440}, height:{ideal:1920} }, audio:false },
+      { video:{ facingMode:facing }, audio:false },
+      { video:true, audio:false }
+    ];
+    for (let i = 0; i < tries.length; i++){
+      try{
+        stream = await navigator.mediaDevices.getUserMedia(tries[i]);
+        const v = document.getElementById('video');
+        v.srcObject = stream;
+        v.classList.toggle('rear', facing === 'environment');
+        // A stream exists before it has a size. Capturing in that window would
+        // copy a zero-by-zero frame and hand the customer a blank photo, so the
+        // shutter waits for real dimensions.
+        await new Promise(res => {
+          if (camReady()) return res();
+          const done = () => res();
+          v.addEventListener('loadedmetadata', done, { once: true });
+          v.addEventListener('playing', done, { once: true });
+          setTimeout(done, 4000);         // never hang on a silent camera
+        });
+        setShootEnabled(true);
+        return;
+      }catch(e){ /* try the next constraint set */ }
+    }
+  }
+  nativeMode = true;
+  document.getElementById('camTip').textContent =
+    'Live preview is blocked in this browser. Tap the button and your normal camera app opens — ' +
+    'take the shot there and it comes straight back here.';
+  setShootEnabled(true);
+}
+
+function flipCam(){
+  facing = (facing === 'user') ? 'environment' : 'user';
+  startCamera();
+}
+
+function stopCamera(){
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+function beep(hz, ms){
+  try{
+    const A = window.AudioContext || window.webkitAudioContext;
+    if (!A) return;
+    const ctx = new A();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = hz; o.type = 'sine';
+    g.gain.setValueAtTime(.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.25, ctx.currentTime + .01);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + ms/1000);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + ms/1000 + .02);
+    setTimeout(() => ctx.close(), ms + 120);
+  }catch(e){}
+}
+
+function startCountdown(){
+  if (nativeMode){ pendingNative = S.shot; document.getElementById('nativeCam').click(); return; }
+  if (!camReady()) return;
+  const btn = document.getElementById('shootBtn');
+  btn.disabled = true;
+  const cd = document.getElementById('count');
+  let t = CFG.countdown || 10;
+  cd.style.display = 'grid';
+  cd.classList.remove('go');
+  cd.textContent = t;
+  const timer = setInterval(() => {
+    t--;
+    if (t > 0){
+      cd.textContent = t;
+      if (t <= 3) beep(880, 90);
+      return;
+    }
+    clearInterval(timer);
+    cd.classList.add('go');
+    cd.textContent = 'SMILE';
+    beep(1320, 220);
+    setTimeout(() => { cd.style.display = 'none'; cd.classList.remove('go'); capture(); }, 550);
+  }, 1000);
+}
+
+/** Crops the frame to the AI's 2:3 portrait shape and keeps it at a sane upload size. */
+function toShotCanvas(src, w, h){
+  // 1024x1536 is the model's own portrait size — matching it exactly means the
+  // face is never resampled twice on its way in.
+  const TARGET_W = 1024, TARGET_H = 1536;
+  const c = document.createElement('canvas');
+  c.width = TARGET_W; c.height = TARGET_H;
+  const x = c.getContext('2d');
+  const scale = Math.max(TARGET_W / w, TARGET_H / h);
+  const dw = w * scale, dh = h * scale;
+  x.drawImage(src, (TARGET_W - dw) / 2, (TARGET_H - dh) / 2, dw, dh);
+  return c;
+}
+
+function capture(){
+  const v = document.getElementById('video');
+  if (!camReady()){
+    // Belt and braces: never save an empty frame. Better to ask for one more
+    // tap than to burn a generation on a blank photo.
+    document.getElementById('camTip').textContent =
+      'The camera was not ready. Tap the timer once more.';
+    setShootEnabled(true);
+    return;
+  }
+  const raw = document.createElement('canvas');
+  raw.width = v.videoWidth; raw.height = v.videoHeight;
+  const rx = raw.getContext('2d');
+  if (facing === 'user'){ rx.translate(raw.width, 0); rx.scale(-1, 1); }   // un-mirror the selfie
+  rx.drawImage(v, 0, 0);
+  finishCapture(toShotCanvas(raw, raw.width, raw.height));
+}
+
+function onNativePhoto(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || pendingNative < 0) return;
+  pendingNative = -1;
+  const url = URL.createObjectURL(file);
+  loadImage(url).then(img => {
+    URL.revokeObjectURL(url);
+    finishCapture(toShotCanvas(img, img.naturalWidth, img.naturalHeight));
+  });
+}
+
+/**
+ * A shot is final the moment it is taken. No keep/retake step: the AI job fires
+ * immediately and the group moves straight on to the next theme, so the queue keeps
+ * moving and the generation happens while they are still choosing.
+ */
+function finishCapture(canvas){
+  const i = S.shot;
+  S.captured[i] = canvas.toDataURL('image/jpeg', .94);   // high fidelity in = high fidelity out
+  stopCamera();
+
+  const f = document.getElementById('flash');
+  f.style.opacity = .9; setTimeout(() => f.style.opacity = 0, 170);
+
+  const cd = document.getElementById('count');
+  cd.style.display = 'grid';
+  cd.classList.add('go');
+  cd.textContent = 'SHOT ' + (i + 1) + ' SAVED';
+
+  startJob(i);
+
+  setTimeout(() => {
+    cd.style.display = 'none';
+    cd.classList.remove('go');
+    history = [];
+    if (i + 1 < CFG.shots) startShot(i + 1, true);
+    else goCheckout();
+  }, 1100);
+}
+
+/**
+ * Fires one AI job, with retries the customer never sees.
+ *
+ * At a busy booth two things throttle: OpenAI returns 429, and Apps Script
+ * refuses past 30 simultaneous executions. Both are temporary and both are
+ * survivable — so a bounced shot waits and re-enters rather than failing.
+ * Backoff is staggered randomly so several phones bounced at the same instant
+ * do not all come back at the same instant.
+ */
+const BUSY = /busy|too many|simultaneous|try again|429|timed out|network|Failed to fetch/i;
+const MAX_TRIES = 4;
+
+function startJob(i, attempt){
+  const cur = S.setup[i];
+  attempt = attempt || 1;
+  S.jobs[i] = S.jobs[i] || {};
+  S.jobs[i].status = 'pending';
+  S.jobs[i].attempt = attempt;
+  S.jobs[i].error = null;
+  paintJobs();
+
+  S.jobs[i].promise = api('generateShot', {
+    sessionId: S.sessionId, deviceId: DEVICE, index: i + 1,
+    dataUrl: S.captured[i],
+    characterId: cur.characterId, people: cur.people, mode: cur.mode
+  }).then(r => {
+    S.jobs[i].status = 'ok'; S.jobs[i].result = r; paintJobs(); return r;
+  }).catch(e => {
+    // A queue is worth waiting out; a rejected photo or a bad key is not.
+    const worthRetrying = BUSY.test(e.message) ? attempt < MAX_TRIES : attempt < 2;
+    if (worthRetrying){
+      const wait = 3000 * attempt + Math.random() * 2500;
+      S.jobs[i].status = 'retry';
+      S.jobs[i].error = e.message;
+      paintJobs();
+      return new Promise(res => setTimeout(res, wait)).then(() => startJob(i, attempt + 1));
+    }
+    S.jobs[i].status = 'failed'; S.jobs[i].error = e.message; paintJobs(); return null;
+  });
+  return S.jobs[i].promise;
+}
+
+/* ══════════════ CHECKOUT ══════════════ */
+function goCheckout(){
+  document.getElementById('checkoutPin').textContent = S.pin;
+  paintJobs();
+  go('scrCheckout', true);
+  waitForJobs();
+}
+
+function paintJobs(){
+  const list = document.getElementById('jobList');
+  list.innerHTML = '';
+  for (let i = 0; i < CFG.shots; i++){
+    const j = S.jobs[i] || { status:'pending' };
+    const st = S.setup[i] || {};
+    const name = (st.characterName || ('Shot ' + (i+1))) +
+                 (st.mode === 'scene' ? ' · backdrop only' : '');
+    const d = document.createElement('div');
+    d.className = 'job ' + (j.status === 'ok' ? 'ok' : j.status === 'failed' ? 'err' : '');
+    const ic = j.status === 'ok' ? '✓' : j.status === 'failed' ? '!' : '<span class="spin"></span>';
+    const msg = j.status === 'ok' ? 'Ready'
+              : j.status === 'failed' ? esc(j.error || 'Failed')
+              : j.status === 'retry' ? 'Booth is busy — waiting and retrying (' +
+                  (j.attempt || 1) + ' of ' + MAX_TRIES + ')…'
+              : 'Painting your scene…';
+    d.innerHTML = '<span class="ic">' + ic + '</span>' +
+      '<span><b>Shot ' + (i+1) + ' — ' + esc(name) + '</b><br><span class="m">' + msg + '</span></span>';
+    list.appendChild(d);
+  }
+}
+
+async function waitForJobs(){
+  await Promise.all(S.jobs.map(j => j && j.promise));
+  const failed = S.jobs.filter(j => !j || j.status !== 'ok').length;
+  const warn = document.getElementById('checkoutWarn');
+
+  if (failed){
+    document.getElementById('checkLede').textContent =
+      failed + ' of ' + CFG.shots + ' shots did not come back.';
+    warn.style.display = 'block';
+    warn.textContent = 'Show this screen to the staff. They can reset your PIN so you can ' +
+      'shoot again at no extra charge.';
+    return;
+  }
+
+  warn.style.display = 'none';
+  document.getElementById('checkLede').textContent = 'All three are done. Here is your collage.';
+  try{
+    await buildCollage();
+    document.getElementById('finishBtn').disabled = false;
+  }catch(e){
+    warn.style.display = 'block';
+    warn.textContent = 'The collage could not be assembled: ' + e.message;
+  }
+}
+
+/* ══════════════ COLLAGE (plain canvas — no AI, no extra cost) ══════════════ */
+function coverDraw(ctx, img, x, y, w, h){
+  const s = Math.max(w / img.width, h / img.height);
+  const dw = img.width * s, dh = img.height * s;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.restore();
+}
+function containDraw(ctx, img, x, y, w, h){
+  const s = Math.min(w / img.width, h / img.height);
+  const dw = img.width * s, dh = img.height * s;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+async function buildCollage(){
+  const G = geom(S.layout);
+  const cv = document.getElementById('collage');
+  cv.width = G.W; cv.height = G.H;
+  const x = cv.getContext('2d');
+
+  // base
+  if (G.mat){
+    x.fillStyle = G.mat; x.fillRect(0, 0, G.W, G.H);
+  } else if (S.bgImage){
+    coverDraw(x, S.bgImage, 0, 0, G.W, G.H);
+  } else {
+    x.fillStyle = '#12151d'; x.fillRect(0, 0, G.W, G.H);
+  }
+
+  // the backdrop's own panel, for layouts that use one
+  if (G.bgSlot && S.bgImage){
+    const b = G.bgSlot;
+    x.save();
+    roundRect(x, b[0], b[1], b[2], b[3], 26); x.clip();
+    coverDraw(x, S.bgImage, b[0], b[1], b[2], b[3]);
+    x.restore();
+  }
+
+  // the three AI shots
+  const imgs = await Promise.all(S.jobs.map(j => loadImage(j.result.dataUrl)));
+  for (let i = 0; i < G.slots.length; i++){
+    const s = G.slots[i];
+    const img = imgs[i];
+    if (!img) continue;
+    const cx = s[0] + s[2] / 2, cy = s[1] + s[3] / 2;
+    x.save();
+    if (s[4]) { x.translate(cx, cy); x.rotate(s[4] * Math.PI / 180); x.translate(-cx, -cy); }
+
+    if (G.polaroid){
+      const pad = Math.round(s[2] * .055), foot = Math.round(s[2] * .17);
+      x.shadowColor = 'rgba(0,0,0,.42)'; x.shadowBlur = 34; x.shadowOffsetY = 12;
+      x.fillStyle = '#FFFDF8';
+      x.fillRect(s[0] - pad, s[1] - pad, s[2] + pad * 2, s[3] + pad * 2 + foot);
+      x.shadowColor = 'transparent';
+      coverDraw(x, img, s[0], s[1], s[2], s[3]);
+    } else {
+      x.shadowColor = 'rgba(0,0,0,.34)'; x.shadowBlur = 26; x.shadowOffsetY = 8;
+      x.fillStyle = '#fff';
+      roundRect(x, s[0] - 8, s[1] - 8, s[2] + 16, s[3] + 16, 26); x.fill();
+      x.shadowColor = 'transparent';
+      x.save(); roundRect(x, s[0], s[1], s[2], s[3], 20); x.clip();
+      coverDraw(x, img, s[0], s[1], s[2], s[3]);
+      x.restore();
+    }
+    x.restore();
+  }
+
+  // title
+  const t = G.title;
+  if (t){
+    x.textAlign = 'center';
+    x.font = (t.script ? 'italic 600 ' : '600 ') + t.size + "px 'Oswald', sans-serif";
+    x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 16; x.shadowOffsetY = 3;
+    x.fillStyle = G.mat ? '#232A35' : '#FFFFFF';
+    if (G.mat){ x.shadowColor = 'transparent'; }
+    x.fillText(CFG.eventName || CFG.boothTitle, t.x, t.y);
+    x.shadowColor = 'transparent';
+  }
+
+  const out = cv.toDataURL('image/jpeg', .9);
+  const prev = document.getElementById('collagePreview');
+  prev.src = out; prev.style.display = 'block';
+  return out;
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
+
+/* ══════════════ FINISH ══════════════ */
+function finish(){
+  const btn = document.getElementById('finishBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving your collage…';
+  const collage = document.getElementById('collage').toDataURL('image/jpeg', .9);
+
+  api('finishSession', {
+    sessionId: S.sessionId, deviceId: DEVICE, collageDataUrl: collage,
+    layoutName: S.layout.name, themeName: S.theme ? S.theme.name : ''
+  })
+  .then(d => {
+    S.done = true;
+    document.getElementById('thankYou').textContent = d.thankYou;
+    document.getElementById('qrImg').src = d.qrUrl;
+    document.getElementById('donePin').textContent = d.pin;
+    return api('getPhotosByPin', { pin: d.pin });
+  })
+  .then(p => {
+    const list = document.getElementById('fileList');
+    list.innerHTML = '';
+    logHit({ pin: S.pin, sessionId: S.sessionId, deviceId: DEVICE, event: 'OPEN' });
+
+    (p.items || []).forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'file';
+      row.innerHTML = '<img src="' + it.url + '=w160" alt="">' +
+        '<span class="n">' + esc(it.label) + '</span>' +
+        '<a target="_blank" rel="noopener">Download</a>';
+      const a = row.querySelector('a');
+      a.href = it.downloadUrl;
+      a.textContent = 'Download';
+      a.addEventListener('click', () => {
+        S.downloaded = true;
+        logHit({ pin: S.pin, sessionId: S.sessionId, deviceId: DEVICE, event: 'FILE',
+                 kind: it.kind, label: it.label, fileId: it.fileId || '' });
+      });
+      list.appendChild(row);
+    });
+    go('scrDone', true);
+  })
+  .catch(e => {
+    btn.disabled = false;
+    btn.innerHTML = 'Confirm PIN <span id="checkoutPin">' + S.pin + '</span> and finish';
+    const w = document.getElementById('checkoutWarn');
+    w.style.display = 'block'; w.textContent = e.message;
+  });
+}
+
+function endSession(){
+  if (!S.downloaded &&
+      !confirm('You have not downloaded anything yet.\n\nEnd the session anyway? ' +
+               'Your photos stay available at the QR link with this PIN.')) return;
+  api('closeSession', { pin: S.pin, deviceId: DEVICE })
+    .catch(() => {})
+    .then(() => {
+      document.getElementById('closedMsg').textContent =
+        'PIN ' + S.pin + ' is closed. Your download page keeps working — ' +
+        'open it again any time with that PIN.';
+      document.getElementById('back').classList.remove('on');
+      document.getElementById('steps').innerHTML = '';
+      go('scrClosed', true);
+    });
+}
+
+/* Warn if they wander off mid-session. */
+window.addEventListener('beforeunload', e => {
+  if (S.sessionId && !S.done){ e.preventDefault(); e.returnValue = ''; }
+});
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[<>&"]/g, c =>
+    ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+
+/* ---------- PWA, without the nagging ----------
+ * The booth is a single-use page: a PIN is spent, the photos are downloaded and
+ * the session closes. Inviting somebody to install that is worse than useless —
+ * they would end up with an icon that leads to an expired session. So the app
+ * is a well-behaved web app (manifest, icons, standalone display if somebody
+ * adds it themselves) but the install prompt is suppressed on sight.
+ */
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();          // no mini-infobar, no "Add to Home screen"
+  return false;
+});
+
+/* The service worker only smooths over a few seconds of bad venue wifi — it is
+ * network-first, so an updated page always wins. Registration is deliberately
+ * late and silent: nothing here may delay or break the booth. */
+if ('serviceWorker' in navigator && location.protocol === 'https:'){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+</script>
+</body>
+</html>

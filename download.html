@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E1017">
+<title>King Arthur Studio and the AI Booth — Download</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./favicon.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KA AI Booth">
+<meta name="format-detection" content="telephone=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0E1017;--surface:#191C26;--raise:#222634;--line:#2E3444;
+    --text:#ECEEF3;--muted:#8B93A7;--gold:#D9B45B;--ok:#34C77B;--bad:#F2555A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+    background:var(--ink);color:var(--text);
+    padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 28px)}
+  .wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+  h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:24px;letter-spacing:.02em;
+    text-transform:uppercase;text-align:center;line-height:1.1}
+  .ev{text-align:center;color:var(--muted);font-size:13px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+  .pin{width:100%;padding:14px;font-family:'Oswald',sans-serif;font-size:32px;letter-spacing:.28em;
+    text-align:center;border:1.5px solid var(--line);border-radius:13px;color:var(--gold);
+    background:var(--ink);outline:none}
+  .pin:focus{border-color:var(--gold)}
+  .btn{display:block;width:100%;margin-top:12px;padding:15px;border:0;border-radius:13px;
+    background:var(--gold);color:#171310;font:700 16px 'Inter',sans-serif;cursor:pointer}
+  .btn:disabled{opacity:.4}
+  .msg{text-align:center;font-size:13px;margin-top:12px;min-height:19px;color:var(--muted);line-height:1.5}
+  .msg.err{color:var(--bad)}
+  .photo{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .photo.hero{border-color:var(--gold)}
+  .photo img{width:100%;display:block;background:var(--raise)}
+  .bar{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;gap:10px}
+  .bar b{font-size:14px}
+  .bar .k{font-size:11px;color:var(--muted);display:block;font-weight:400}
+  .dl{background:var(--ok);color:#082116;text-decoration:none;font:700 13px 'Inter',sans-serif;
+    padding:10px 15px;border-radius:11px;white-space:nowrap}
+  .tip{font-size:12px;color:var(--muted);text-align:center;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">King Arthur Studio and the AI Booth</h1>
+  <div class="ev" id="ev">Enter your PIN to open your photos</div>
+
+  <div class="card" id="pinCard">
+    <input id="pin" class="pin" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="off">
+    <button class="btn" id="btn" onclick="load()">Open my photos</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div id="grid" style="display:flex;flex-direction:column;gap:14px"></div>
+  <p class="tip" id="tip" style="display:none">
+    Tap Download on each one. On iPhone the file opens in a new tab — press and hold the
+    image, then choose Save to Photos.
+  </p>
+</div>
+
+<script>
+/* Same Apps Script /exec URL as index.html */
+const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
+
+async function api(action, payload){
+  const res = await fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(Object.assign({action:action}, payload||{}))
+  });
+  const j = JSON.parse(await res.text());
+  if (!j.ok) throw new Error(j.error || 'Server error');
+  return j.data;
+}
+
+/**
+ * Fire-and-forget hit logging. The Download buttons go straight to Drive, so
+ * the server only learns about a tap if we tell it. sendBeacon survives the
+ * page navigating away; the fetch fallback uses keepalive for the same reason.
+ */
+function logHit(payload){
+  try{
+    const body = JSON.stringify(Object.assign({action:'logDownload'}, payload));
+    if (navigator.sendBeacon){
+      navigator.sendBeacon(API_URL, new Blob([body], {type:'text/plain;charset=utf-8'}));
+      return;
+    }
+    fetch(API_URL, { method:'POST', keepalive:true,
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, body:body });
+  }catch(e){ /* logging must never block a download */ }
+}
+
+function msg(t, err){
+  const el = document.getElementById('msg');
+  el.textContent = t || '';
+  el.className = 'msg' + (err ? ' err' : '');
+}
+
+document.getElementById('pin').addEventListener('input', function(){
+  this.value = this.value.replace(/\D/g,'').slice(0,6);
+});
+document.getElementById('pin').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') load();
+});
+
+function load(){
+  const pin = document.getElementById('pin').value.replace(/\D/g,'');
+  if (pin.length !== 6) return msg('Enter your 6-digit PIN.', true);
+  document.getElementById('btn').disabled = true;
+  document.getElementById('grid').innerHTML = '';
+  document.getElementById('tip').style.display = 'none';
+  msg('Looking for your photos…');
+
+  api('getPhotosByPin', { pin: pin })
+    .then(d => {
+      document.getElementById('btn').disabled = false;
+      if (!d.ok) return msg(d.message, true);
+      document.getElementById('title').textContent = d.boothTitle;
+      document.getElementById('ev').textContent = d.eventName;
+      msg(d.items.length + ' files ready.');
+      document.getElementById('tip').style.display = 'block';
+      logHit({ pin: pin, event: 'OPEN' });
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      d.items.forEach(function(it){
+        const card = document.createElement('div');
+        card.className = 'photo' + (it.kind === 'COLLAGE' ? ' hero' : '');
+        card.innerHTML =
+          '<img src="' + it.url + '" loading="lazy" alt="">' +
+          '<div class="bar"><b>' + esc(it.label) +
+            '<span class="k">' + (it.kind === 'COLLAGE' ? 'Your collage' : 'AI photo') + '</span></b>' +
+            '<a class="dl" target="_blank" rel="noopener">Download</a>' +
+          '</div>';
+        const a = card.querySelector('a.dl');
+        a.href = it.downloadUrl;
+        a.addEventListener('click', function(){
+          logHit({ pin: pin, event: 'FILE', kind: it.kind,
+                   label: it.label, fileId: it.fileId || '' });
+        });
+        grid.appendChild(card);
+      });
+    })
+    .catch(e => { document.getElementById('btn').disabled = false; msg(e.message, true); });
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[<>&"]/g, c =>
+    ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+
+/* ---------- PWA, without the nagging ----------
+ * The booth is a single-use page: a PIN is spent, the photos are downloaded and
+ * the session closes. Inviting somebody to install that is worse than useless —
+ * they would end up with an icon that leads to an expired session. So the app
+ * is a well-behaved web app (manifest, icons, standalone display if somebody
+ * adds it themselves) but the install prompt is suppressed on sight.
+ */
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();          // no mini-infobar, no "Add to Home screen"
+  return false;
+});
+
+/* The service worker only smooths over a few seconds of bad venue wifi — it is
+ * network-first, so an updated page always wins. Registration is deliberately
+ * late and silent: nothing here may delay or break the booth. */
+if ('serviceWorker' in navigator && location.protocol === 'https:'){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+
+/* The QR carries ?pin=… so most people never type anything. */
+(function(){
+  const p = new URLSearchParams(location.search).get('pin');
+  if (p && /^\d{6}$/.test(p)){ document.getElementById('pin').value = p; load(); }
+})();
+</script>
+</body>
+</html>
