@@ -311,7 +311,7 @@
 
     <ul class="how">
       <li><b>1</b><span>Pick a theme for your collage, then a layout.</span></li>
-      <li><b>2</b><span>For each shot, pick one character — everybody becomes it.</span></li>
+      <li id="howStep2"><b>2</b><span>For each shot, pick one character — everybody becomes it.</span></li>
       <li><b>3</b><span>Prop up your phone. A 10-second timer gives you time to pose — each shot is final, so pose before it fires.</span></li>
       <li><b>4</b><span>Scan the QR and download. Your PIN closes after that.</span></li>
     </ul>
@@ -414,6 +414,8 @@
     <div style="flex:1"></div>
     <div class="banner" id="paintWarn" style="display:none"></div>
     <button class="btn gold" id="paintNext" style="display:none" onclick="afterPaint()"></button>
+    <button class="btn gold" id="paintAgain" style="display:none"
+            onclick="tryShotAgain()">Try again with this photo</button>
     <button class="btn quiet slim" id="paintRetake" style="display:none;margin-top:8px"
             onclick="retakeShot()">Retake this shot</button>
     <button class="btn quiet slim" id="paintChange" style="display:none;margin-top:8px"
@@ -856,8 +858,10 @@ function applyConfig(cfg, fromCache){
     document.getElementById('priceNote').textContent = CFG.priceNote || '';
     document.getElementById('pinHint').textContent = CFG.pinInstructions || '';
     document.getElementById('cdLabel').textContent = CFG.countdown;
-    document.getElementById('tagline').textContent =
-      CFG.shots + ' photos on your own phone. AI writes you into the story.';
+    document.getElementById('tagline').textContent = aiOn()
+      ? CFG.shots + ' photos on your own phone. AI writes you into the story.'
+      : CFG.shots + ' photos on your own phone, framed in your collage.';
+    document.getElementById('howStep2').style.display = aiOn() ? '' : 'none';
 
     const warn = [];
     if ((Number(CFG.apiVersion)||0) < NEEDS_API_VERSION){
@@ -987,6 +991,10 @@ async function submitPinInner(btn, attempt){
       if (attempt !== pinAttempt) return;          // they cancelled meanwhile
       resetState();
       S.pin = d.pin; S.sessionId = d.sessionId;
+      // Shots this PIN already paid for (e.g. staff released the PIN after a
+      // problem). They are reused, so only the missing shots are painted.
+      S.kept = {};
+      (d.done || []).forEach(p => { if (p && p.index && p.fileId) S.kept[p.index] = p; });
       buildThemes();                               // fresh screen, default poster picked
       document.getElementById('checkoutPin').textContent = d.pin;
       closePin();
@@ -1219,8 +1227,29 @@ function shotBarHtml(active){
   return h + '<span>Shot ' + (active+1) + ' of ' + CFG.shots + '</span>';
 }
 
+/** Settings → AllowAI. Off = photos are kept exactly as taken (no AI, no cost). */
+function aiOn(){ return CFG.aiEnabled !== false; }
+
 function startShot(i, silent){
   S.shot = i;
+  const kept = S.kept && S.kept[i + 1];
+  if (kept && !S.jobs[i]){
+    const r = { index: i + 1, label: kept.label, fileId: kept.fileId, url: kept.url, dataUrl: '' };
+    S.setup[i] = { characterId: null, characterName: String(kept.label || '').replace(/\s*\d+$/, '') ||
+                   ('Shot ' + (i + 1)), mode: 'full' };
+    S.jobs[i] = { status: 'ok', result: r, kept: true, t0: Date.now(), t1: Date.now(),
+                  promise: Promise.resolve(r) };
+    S.jobs[i].img = probeCdn(r.fileId).then(() => loadShotImage(r)).catch(() => null);
+    S.captured[i] = '';
+    openPaint(i);
+    return;
+  }
+  if (!aiOn()){
+    // No character to choose: straight to the camera.
+    S.setup[i] = { characterId: '', characterName: 'Photo ' + (i + 1), mode: 'original' };
+    openCamera(silent);
+    return;
+  }
   if (!S.setup[i]) S.setup[i] = { characterId:null, characterName:'', mode:'full' };
   document.getElementById('shotBar').innerHTML = shotBarHtml(i);
   document.getElementById('setupTitle').textContent = 'Shot ' + (i+1);
@@ -1638,7 +1667,9 @@ function finishCapture(canvas){
   cd.classList.add('go');
   cd.textContent = 'SHOT ' + (i + 1) + ' SAVED';
 
-  S.jobs[i] = {};                 // fresh job (also after a retake)
+  // Fresh job with its own captureId. Asking the server again with the SAME id
+  // can never cost a second picture; only a new photo (a retake) gets a new id.
+  S.jobs[i] = { captureId: 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };
   startJob(i);
 
   setTimeout(() => {
@@ -1655,12 +1686,18 @@ function finishCapture(canvas){
  * OpenAI's rate limit, and the group sees every result before moving on. */
 function openPaint(i){
   document.getElementById('paintBar').innerHTML = shotBarHtml(i);
-  document.getElementById('paintTitle').textContent = 'Painting shot ' + (i + 1);
+  const kept = S.jobs[i] && S.jobs[i].kept;
+  document.getElementById('paintTitle').textContent = kept
+    ? 'Shot ' + (i + 1) + ' is already done'
+    : (aiOn() ? 'Painting shot ' : 'Saving shot ') + (i + 1);
   document.getElementById('paintLede').textContent = (i + 1 < CFG.shots)
     ? 'Hold on — shot ' + (i + 2) + ' starts as soon as this one is done.'
     : 'Last one! Your collage is next.';
+  if (kept) document.getElementById('paintLede').textContent =
+    'This photo was already made on your PIN, so we kept it — no need to shoot it again.';
   const img = document.getElementById('paintImg');
-  img.src = S.captured[i];
+  img.dataset.shown = '';
+  if (S.captured[i]) img.src = S.captured[i]; else img.removeAttribute('src');
   img.style.opacity = .45;
   paintShotScreen();
   go('scrPaint', true);
@@ -1684,7 +1721,8 @@ function paintShotScreen(){
     status.className = 'job ok';
     ic.innerHTML = '✓';
     T.textContent = (st.characterName || 'Shot ' + (i + 1)) + ' — ready';
-    M.textContent = 'Painted in ' + secs + 's';
+    M.textContent = j.kept ? 'Kept from your earlier visit'
+                  : (aiOn() ? 'Painted in ' : 'Saved in ') + secs + 's';
     const img = document.getElementById('paintImg');
     const r = j.result || {};
     const src = r.dataUrl || (r.fileId ? 'https://lh3.googleusercontent.com/d/' + r.fileId + '=w900' : '');
@@ -1697,26 +1735,32 @@ function paintShotScreen(){
       : 'Make my collage <svg class="icon"><use href="#i-right"/></svg>';
     retake.style.display = 'none';
     change.style.display = 'none';
+    document.getElementById('paintAgain').style.display = 'none';
   } else if (j.status === 'failed'){
     status.className = 'job err';
     ic.innerHTML = '!';
     T.textContent = 'This shot did not come out';
     M.textContent = j.error || '';
     warn.style.display = 'block';
-    warn.textContent = 'Nothing is charged for a failed shot. Retake it, or try another character.';
+    warn.textContent = 'Nothing is charged for a failed shot. Try again with the same photo ' +
+      '(if the booth had already finished it, you get it back at no cost), retake it, ' +
+      'or pick another character.';
     next.style.display = 'none';
+    document.getElementById('paintAgain').style.display = 'block';
     retake.style.display = 'block';
     change.style.display = 'block';
   } else {
     status.className = 'job';
     ic.innerHTML = '<span class="spin"></span>';
-    T.textContent = j.status === 'retry' ? 'Booth is busy — trying again…' : 'Painting your scene…';
+    T.textContent = j.status === 'retry' ? 'Booth is busy — trying again…'
+                  : (aiOn() ? 'Painting your scene…' : 'Saving your photo…');
     M.textContent = secs + 's' + (j.status === 'retry' ? ' · attempt ' + (j.attempt || 1) +
-      ' of ' + MAX_TRIES : ' · usually under a minute');
+      ' of ' + MAX_TRIES : (aiOn() ? ' · usually under a minute' : ' · a few seconds'));
     warn.style.display = 'none';
     next.style.display = 'none';
     retake.style.display = 'none';
     change.style.display = 'none';
+    document.getElementById('paintAgain').style.display = 'none';
   }
 }
 
@@ -1726,6 +1770,12 @@ function afterPaint(){
   document.getElementById('paintImg').dataset.shown = '';
   if (i + 1 < CFG.shots) startShot(i + 1, true);
   else goCheckout();
+}
+function tryShotAgain(){
+  const i = S.shot;
+  S.jobs[i].t0 = Date.now(); S.jobs[i].t1 = 0;
+  startJob(i, 1);                  // same captureId: never a second charge
+  paintShotScreen();
 }
 function retakeShot(){
   document.getElementById('paintImg').dataset.shown = '';
@@ -1765,6 +1815,7 @@ function startJob(i, attempt){
     sessionId: S.sessionId, deviceId: DEVICE, index: i + 1,
     dataUrl: S.captured[i],
     characterId: cur.characterId, mode: cur.mode,
+    captureId: S.jobs[i].captureId,
     size: shotShape(i) === 'wide' ? '1536x1024' : '1024x1536',
     skipPreview: cdnDirect === true
   }).then(r => {
@@ -1780,6 +1831,13 @@ function startJob(i, attempt){
     return r;
   }).catch(e => {
     if (S !== mine){ mine.jobs[i].status = 'failed'; return null; }   // customer has left
+    // The server is still working on this very photo (our first request was
+    // cut off). Wait for it instead of paying for a new one.
+    if (/STILL_PAINTING/.test(e.message) && Date.now() - (S.jobs[i].t0 || Date.now()) < 8 * 60000){
+      S.jobs[i].status = 'pending'; paintJobs();
+      return new Promise(res => setTimeout(res, 8000))
+        .then(() => S === mine ? startJob(i, attempt) : null);
+    }
     // A queue is worth waiting out; a rejected photo or a bad key is not.
     const worthRetrying = BUSY.test(e.message) ? attempt < MAX_TRIES : attempt < 2;
     if (worthRetrying){
@@ -1826,7 +1884,7 @@ function paintJobs(){
               : j.status === 'failed' ? esc(j.error || 'Failed')
               : j.status === 'retry' ? 'Booth is busy — waiting and retrying (' +
                   (j.attempt || 1) + ' of ' + MAX_TRIES + ')…'
-              : 'Painting your scene… ' + (j.t0 ? Math.round((Date.now() - j.t0) / 1000) + 's' : '');
+              : (aiOn() ? 'Painting your scene… ' : 'Saving your photo… ') + (j.t0 ? Math.round((Date.now() - j.t0) / 1000) + 's' : '');
     d.innerHTML = '<span class="ic">' + ic + '</span>' +
       '<span><b>Shot ' + (i+1) + ' — ' + esc(name) + '</b><br><span class="m">' + msg + '</span></span>';
     list.appendChild(d);
@@ -2177,7 +2235,7 @@ function endSession(){
  * old session still in memory), which is why the next PIN "would not log in".
  * Now the page wipes itself and goes straight back to the PIN pad. */
 function resetState(){
-  S = { pin:null, sessionId:null, theme:null, bgImage:null, layout:null,
+  S = { pin:null, sessionId:null, kept:{}, theme:null, bgImage:null, layout:null,
         shot:0, downloaded:false, setup:[], captured:[], jobs:[], done:false };
   history = [];
   pendingNative = -1;
