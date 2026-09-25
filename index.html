@@ -122,6 +122,9 @@
   .pick.on .lay .cell{fill:var(--primary)}
   .pick.on .lay .bgc{fill:var(--gold)}
 
+  .pick .swatch{display:block;width:100%;aspect-ratio:4/3;border-radius:9px;
+    margin-bottom:7px;border:1px solid rgba(255,255,255,.07)}
+
   /* how much the AI changes: two wide options, not a toggle — a toggle hides
      what the other state does, and this choice changes what they get back */
   .modeseg{display:flex;flex-direction:column;gap:7px}
@@ -442,7 +445,7 @@
    Paste your Apps Script /exec URL below. Same URL as download.html.
    ══════════════════════════════════════════════════════════ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
-const NEEDS_API_VERSION = 17;
+const NEEDS_API_VERSION = 18;
 
 /* ---------- transport ---------- */
 
@@ -590,7 +593,8 @@ api('getConfig')
         ', this page needs v' + NEEDS_API_VERSION + '). In Apps Script: Deploy → ' +
         'Manage deployments → edit → Version: New version → Deploy.');
     }
-    if (!CFG.themes.length) warn.push('No themes are set up yet. Put Drive links in the Themes sheet.');
+    if (!CFG.themes.length) warn.push('No themes are set up yet. Run initializeSheet() from ' +
+      'the spreadsheet, or give each Themes row either a Drive link or a Color like #14161F.');
     if (!CFG.characters.length) warn.push('No characters are set up yet. Fill the Characters sheet.');
     if (warn.length){
       const el = document.getElementById('landingWarn');
@@ -694,7 +698,13 @@ function buildThemes(){
   CFG.themes.forEach(t => {
     const b = document.createElement('button');
     b.className = 'pick';
-    b.innerHTML = '<img alt="" src="https://lh3.googleusercontent.com/d/' + t.fileId + '=w500">' +
+    const art = t.fileId
+      ? '<img alt="" loading="lazy" src="https://lh3.googleusercontent.com/d/' +
+        t.fileId + '=w500">'
+      : '<span class="swatch" style="background:' +
+        'radial-gradient(120% 90% at 50% 18%, ' + tint(t.color, 26) + ', ' +
+        tint(t.color, -18) + ')"></span>';
+    b.innerHTML = art +
                   '<span class="t">' + esc(t.name) + '</span>' +
                   '<span class="s">' + (t.orientation === 'PORTRAIT' ? 'Portrait' : 'Landscape') +
                   ' collage</span>';
@@ -733,7 +743,64 @@ function selectTheme(t, card){
     });
 }
 
+/** Perceived lightness, for deciding whether type over this should be dark. */
+function isLight(hex){
+  const h = String(hex || '').replace('#','');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h.slice(0,6);
+  const n = parseInt(full, 16);
+  if (isNaN(n)) return false;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62;
+}
+
+/** Nudges a hex colour lighter (+) or darker (-) by a percentage. */
+function tint(hex, pct){
+  const h = String(hex || '#222633').replace('#','');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h.slice(0,6);
+  const n = parseInt(full, 16);
+  const cl = v => Math.max(0, Math.min(255, Math.round(v)));
+  const r = cl(((n >> 16) & 255) + 255 * pct / 100);
+  const g = cl(((n >> 8) & 255) + 255 * pct / 100);
+  const b = cl((n & 255) + 255 * pct / 100);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+/**
+ * Paints a plain colour backdrop at full collage size.
+ *
+ * A booth should not be unusable until somebody has shot backdrop artwork, so a
+ * theme can be just a colour. It is drawn here rather than fetched: instant, no
+ * Drive round trip, and the canvas stays untainted so the collage still exports.
+ */
+function paintBackdrop(theme){
+  const port = theme.orientation === 'PORTRAIT';
+  const W = port ? 1500 : 2100, H = port ? 2100 : 1500;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+
+  // A soft top-down glow reads as studio lighting rather than a flat fill.
+  const g = x.createRadialGradient(W / 2, H * 0.16, Math.min(W, H) * 0.05,
+                                   W / 2, H * 0.5,  Math.max(W, H) * 0.78);
+  g.addColorStop(0, tint(theme.color, 24));
+  g.addColorStop(0.55, theme.color || '#1A1D28');
+  g.addColorStop(1, tint(theme.color, -20));
+  x.fillStyle = g;
+  x.fillRect(0, 0, W, H);
+
+  // Very light vignette so photos placed on top keep their edges.
+  const v = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35,
+                                   W / 2, H / 2, Math.max(W, H) * 0.72);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,.22)');
+  x.fillStyle = v;
+  x.fillRect(0, 0, W, H);
+
+  return loadImage(c.toDataURL('image/jpeg', .92));
+}
+
 async function loadBackdrop(theme){
+  if (!theme.fileId) return await paintBackdrop(theme);
   const prep = await api('prepareBackground',
     { fileId: theme.fileId, url: theme.url, width: 1600 });
   if (!prep || !prep.chunks) throw new Error('the server sent no image data');
@@ -1405,14 +1472,20 @@ async function buildCollage(){
     x.restore();
   }
 
-  // title
+  // Title. White type disappears on a pale backdrop like Ivory Wedding, so the
+  // colour is chosen from how light the thing behind it actually is.
   const t = G.title;
   if (t){
+    const dark = G.mat ? true : (S.theme && S.theme.color ? isLight(S.theme.color) : false);
     x.textAlign = 'center';
     x.font = (t.script ? 'italic 600 ' : '600 ') + t.size + "px 'Oswald', sans-serif";
-    x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 16; x.shadowOffsetY = 3;
-    x.fillStyle = G.mat ? '#232A35' : '#FFFFFF';
-    if (G.mat){ x.shadowColor = 'transparent'; }
+    x.fillStyle = dark ? '#232A35' : '#FFFFFF';
+    // A shadow under dark type on a pale ground just looks grubby.
+    if (dark){
+      x.shadowColor = 'transparent';
+    } else {
+      x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 16; x.shadowOffsetY = 3;
+    }
     x.fillText(CFG.eventName || CFG.boothTitle, t.x, t.y);
     x.shadowColor = 'transparent';
   }
