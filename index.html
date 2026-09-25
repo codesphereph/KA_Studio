@@ -125,6 +125,15 @@
   .pick .swatch{display:block;width:100%;aspect-ratio:4/3;border-radius:9px;
     margin-bottom:7px;border:1px solid rgba(255,255,255,.07)}
 
+  /* Theme and layout cards show the WHOLE picture — never cropped. The card
+     takes the picture's own shape: tall for portrait, wide for landscape. */
+  #bgGrid,#layoutGrid{align-items:start}
+  #bgGrid .pick img,#layoutGrid .pick img{object-fit:contain;height:auto}
+  #bgGrid .pick img.portrait,#layoutGrid .pick img.portrait{aspect-ratio:2/3}
+  #bgGrid .pick img.landscape,#layoutGrid .pick img.landscape{aspect-ratio:16/9}
+  #bgGrid .pick .swatch.portrait{aspect-ratio:2/3}
+  #bgGrid .pick .swatch.landscape{aspect-ratio:16/9}
+
   /* how much the AI changes: two wide options, not a toggle — a toggle hides
      what the other state does, and this choice changes what they get back */
   .modeseg{display:flex;flex-direction:column;gap:7px}
@@ -999,12 +1008,13 @@ function buildThemes(){
     const b = document.createElement('button');
     b.className = 'pick';
     if (!firstCard) firstCard = b;
+    const shape = t.orientation === 'PORTRAIT' ? 'portrait' : 'landscape';
     const art = t.builtin
-      ? '<img alt="" src="' + (t.thumb || t.src) + '">'
+      ? '<img class="' + shape + '" alt="" src="' + (t.thumb || t.src) + '">'
       : t.fileId
-      ? '<img alt="" loading="lazy" src="https://lh3.googleusercontent.com/d/' +
+      ? '<img class="' + shape + '" alt="" loading="lazy" src="https://lh3.googleusercontent.com/d/' +
         t.fileId + '=w500">'
-      : '<span class="swatch" style="background:' +
+      : '<span class="swatch ' + shape + '" style="background:' +
         'radial-gradient(120% 90% at 50% 18%, ' + tint(t.color, 26) + ', ' +
         tint(t.color, -18) + ')"></span>';
     b.innerHTML = art +
@@ -1163,7 +1173,8 @@ function buildLayouts(){
   if (posterL){
     const b = document.createElement('button');
     b.className = 'pick on';
-    b.innerHTML = '<img alt="" src="' + (S.theme.thumb || S.theme.src) + '">' +
+    b.innerHTML = '<img class="' + (S.theme.orientation === 'PORTRAIT' ? 'portrait' : 'landscape') +
+                  '" alt="" src="' + (S.theme.thumb || S.theme.src) + '">' +
                   '<span class="t">' + posterL.name + '</span>' +
                   '<span class="s">' + posterL.blurb + '</span>';
     g.appendChild(b);
