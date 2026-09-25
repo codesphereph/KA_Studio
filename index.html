@@ -851,6 +851,7 @@ function loadConfig(){
       el.style.display = 'block'; el.textContent = warn.join(' ');
     }
     buildThemes();
+    prefetchBackdrops();
     buildSteps();
   })
   .catch(err => {
@@ -995,6 +996,7 @@ let adminValue = '';
       else if (key === 'del') adminValue = adminValue.slice(0, -1);
       else if (adminValue.length < 4) adminValue += key;
       paintAdmin();
+      if (adminValue.length === 4 && key !== 'del' && key !== 'clear') submitAdminPin();   // no extra tap
     };
     k.appendChild(b);
   });
@@ -1018,24 +1020,44 @@ function closeAdminPin(){
   adminValue = '';
   document.getElementById('adminModal').classList.remove('on');
 }
+async function sha256Hex(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => ('0' + b.toString(16)).slice(-2)).join('');
+}
+
+let adminBusy = false;
 async function submitAdminPin(){
+  if (adminBusy || adminValue.length !== 4) return;
+  adminBusy = true;
   const btn = document.getElementById('adminGo');
   btn.disabled = true;
+  const pin = adminValue;
   // Open the tab now, while the tap still counts as a user action — a tab
   // opened after the server answers would be blocked as a pop-up.
   let tab = null;
   try { tab = window.open('', '_blank'); } catch (e) {}
-  paintAdmin('Checking…');
+  paintAdmin('Opening the Admin Portal…');
   try {
-    const r = await api('adminLogin', { pin: adminValue });
-    const url = API_URL + '?page=admin&t=' + encodeURIComponent(r.token);
+    // Fast path: a signed link loads the Admin page straight away, while the
+    // PIN is checked alongside it — one round trip of waiting instead of two.
+    let signed = '';
+    try {
+      const slot = Math.floor(Date.now() / 60000);
+      signed = API_URL + '?page=admin&s=' + slot + '&h=' + (await sha256Hex(pin + '|' + slot));
+    } catch (e) { /* no crypto.subtle (http page): use the token route below */ }
+    if (signed && tab && !tab.closed) tab.location.href = signed;
+
+    const r = await api('adminLogin', { pin: pin });          // wrong PIN throws here
+    const url = signed || (API_URL + '?page=admin&t=' + encodeURIComponent(r.token));
     closeAdminPin();
-    if (tab && !tab.closed) tab.location.href = url;
+    if (tab && !tab.closed){ if (!signed) tab.location.href = url; }
     else location.href = url;               // pop-ups blocked: open it here instead
   } catch (e) {
-    if (tab && !tab.closed) tab.close();
+    if (tab && !tab.closed) tab.close();    // wrong PIN: never leave the locked tab open
     adminValue = '';
     paintAdmin(e.message, 'err');
+  } finally {
+    adminBusy = false;
   }
 }
 
@@ -1069,31 +1091,23 @@ function buildThemes(){
 function selectTheme(t, card){
   document.querySelectorAll('#bgGrid .pick').forEach(x => x.classList.remove('on'));
   card.classList.add('on');
-  S.theme = t; S.bgImage = null; S.layout = null;
-  document.getElementById('bgNext').disabled = true;
-  document.getElementById('bgNext').textContent = 'Loading backdrop…';
+  S.theme = t; S.bgImage = null;
+  // The layout comes from the theme's own data, so it is ready at once. The
+  // poster artwork is only needed when the collage is drawn, so it loads in
+  // the background and nobody waits for it here.
+  buildLayouts();
+  const n = document.getElementById('bgNext');
+  n.disabled = false;
+  n.innerHTML = 'Start shot 1 <svg class="icon"><use href="#i-right"/></svg>';
+  const mine = S;
+  S.bgPromise = loadBackdrop(t)
+    .then(img => { if (mine.theme === t) mine.bgImage = img; return img; })
+    .catch(() => null);          // the collage falls back to a plain panel
+}
 
-  // Pull the backdrop through the server in pieces, so the collage canvas
-  // stays untainted and can still be exported.
-  loadBackdrop(t)
-    .then(img => {
-      S.bgImage = img;
-      const n = document.getElementById('bgNext');
-      n.disabled = false;
-      n.innerHTML = 'Start shot 1 <svg class="icon"><use href="#i-right"/></svg>';
-      buildLayouts();
-    })
-    .catch(e => {
-      // The collage can still be built on a plain panel, so let them carry on —
-      // but the layout cards must exist either way, or they land on a blank
-      // screen with no way forward.
-      const n = document.getElementById('bgNext');
-      n.disabled = false;
-      n.innerHTML = 'Start without the poster <svg class="icon"><use href="#i-right"/></svg>';
-      buildLayouts();
-      alert('That backdrop could not load, so the collage will use a plain panel. ' +
-            'Tell the staff if this keeps happening.\n\n(' + e.message + ')');
-    });
+/** Starts downloading every poster as soon as the page opens — before the PIN. */
+function prefetchBackdrops(){
+  (CFG.themes || []).forEach(t => { if (t.fileId || t.url) loadBackdrop(t).catch(() => {}); });
 }
 
 /** Perceived lightness, for deciding whether type over this should be dark. */
@@ -1171,7 +1185,7 @@ async function loadBackdropFresh(theme){
 
   // Fastest: straight from Google's lh3 CDN with CORS, so the canvas stays
   // exportable. If this phone or file refuses CORS, stream it via the server.
-  try { return await loadCors(direct, 20000); }
+  try { return await loadCors(direct, 12000); }
   catch (e) { if (!theme.fileId) throw e; }
 
   const prep = await api('prepareBackground',
@@ -1931,6 +1945,11 @@ async function waitForJobs(){
 }
 
 async function assembleCollage(){
+  // The poster was loading in the background; make sure it has arrived.
+  if (!S.bgImage && S.bgPromise) S.bgImage = await S.bgPromise;
+  if (!S.bgImage && S.theme && (S.theme.fileId || S.theme.url)){
+    S.bgImage = await loadBackdrop(S.theme).catch(() => null);   // one more try
+  }
   const warn = document.getElementById('checkoutWarn');
   const again = document.getElementById('collageRetry');
   warn.style.display = 'none';
