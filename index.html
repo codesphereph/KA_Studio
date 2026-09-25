@@ -1670,7 +1670,7 @@ function finishCapture(canvas){
   // Fresh job with its own captureId. Asking the server again with the SAME id
   // can never cost a second picture; only a new photo (a retake) gets a new id.
   S.jobs[i] = { captureId: 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };
-  startJob(i);
+  if (aiOn()) startJob(i); else startLocalShot(i);
 
   setTimeout(() => {
     cd.style.display = 'none';
@@ -1722,10 +1722,12 @@ function paintShotScreen(){
     ic.innerHTML = '✓';
     T.textContent = (st.characterName || 'Shot ' + (i + 1)) + ' — ready';
     M.textContent = j.kept ? 'Kept from your earlier visit'
-                  : (aiOn() ? 'Painted in ' : 'Saved in ') + secs + 's';
+                  : j.local ? (j.uploaded ? 'Saved to the booth' : 'Saved · sending to the booth in the background')
+                  : 'Painted in ' + secs + 's';
     const img = document.getElementById('paintImg');
     const r = j.result || {};
-    const src = r.dataUrl || (r.fileId ? 'https://lh3.googleusercontent.com/d/' + r.fileId + '=w900' : '');
+    const src = j.local ? S.captured[i]
+      : (r.dataUrl || (r.fileId ? 'https://lh3.googleusercontent.com/d/' + r.fileId + '=w900' : ''));
     if (src && img.dataset.shown !== src){ img.dataset.shown = src; img.src = src; }
     img.style.opacity = 1;
     warn.style.display = 'none';
@@ -1773,6 +1775,7 @@ function afterPaint(){
 }
 function tryShotAgain(){
   const i = S.shot;
+  if (S.jobs[i].local){ startLocalShot(i); paintShotScreen(); return; }
   S.jobs[i].t0 = Date.now(); S.jobs[i].t1 = 0;
   startJob(i, 1);                  // same captureId: never a second charge
   paintShotScreen();
@@ -1799,6 +1802,44 @@ function changeCharacter(){
  */
 const BUSY = /busy|too many|simultaneous|try again|429|timed out|network|Failed to fetch/i;
 const MAX_TRIES = 4;
+
+/* ══════════════ AI OFF: THE PHOTO IS ALREADY ON THE PHONE ══════════════
+ * Nothing needs to be painted or downloaded. The shot is ready the moment it
+ * is taken, the collage is built from the phone's own copy, and the upload to
+ * the booth (for the download page) runs quietly in the background. */
+function startLocalShot(i){
+  const j = S.jobs[i];
+  j.local = true; j.uploaded = false;
+  j.status = 'ok'; j.t0 = j.t1 = Date.now(); j.error = null;
+  j.result = null;
+  j.img = loadImage(S.captured[i]).catch(() => null);
+  j.promise = uploadLocalShot(i, S, 1);
+  paintJobs();
+}
+function uploadLocalShot(i, mine, attempt){
+  const j = mine.jobs[i];
+  return api('generateShot', {
+    sessionId: mine.sessionId, deviceId: DEVICE, index: i + 1,
+    dataUrl: mine.captured[i], captureId: j.captureId,
+    characterId: '', mode: 'original', skipPreview: true,
+    size: shotShape(i) === 'wide' ? '1536x1024' : '1024x1536'
+  }).then(r => {
+    j.result = r; j.uploaded = true; j.status = 'ok'; j.error = null;
+    if (S === mine) paintJobs();
+    return r;
+  }).catch(e => {
+    if (S !== mine) return null;
+    // Same captureId every time, so a repeat can never save the photo twice.
+    if (attempt < 6){
+      j.error = e.message;
+      return new Promise(res => setTimeout(res, 1500 * attempt))
+        .then(() => S === mine ? uploadLocalShot(i, mine, attempt + 1) : null);
+    }
+    j.status = 'failed'; j.error = 'Could not save this photo to the booth: ' + e.message;
+    paintJobs();
+    return null;
+  });
+}
 
 function startJob(i, attempt){
   const cur = S.setup[i];
@@ -1863,6 +1904,9 @@ setInterval(() => {
 
 function goCheckout(){
   document.getElementById('checkoutPin').textContent = S.pin;
+  document.getElementById('checkLede').textContent = aiOn()
+    ? 'Hold on — this takes about a minute.'
+    : 'Sending your photos to the booth — a few seconds.';
   paintJobs();
   go('scrCheckout', true);
   waitForJobs();
@@ -2023,6 +2067,9 @@ async function collageImages(){
     const j = S.jobs[i] || {};
     let img = null;
     try { img = await (j.img || Promise.resolve(null)); } catch(e){ img = null; }
+    if (!img && S.captured[i] && (j.local || !aiOn())){
+      try { img = await loadImage(S.captured[i]); } catch(e){ img = null; }   // the phone's own copy
+    }
     if (!img && j.result && j.result.fileId){
       try { img = await loadShotImage(j.result); } catch(e){ img = null; }
     }
