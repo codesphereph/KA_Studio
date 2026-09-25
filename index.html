@@ -306,7 +306,7 @@
     </div>
 
     <ul class="how">
-      <li><b>1</b><span>Pick a theme for your collage, then a layout.</span></li>
+      <li><b>1</b><span>Pick your poster — portrait or landscape.</span></li>
       <li><b>2</b><span>For each shot, pick one character — everybody becomes it.</span></li>
       <li><b>3</b><span>Prop up your phone. A 10-second timer gives you time to pose — each shot is final, so pose before it fires.</span></li>
       <li><b>4</b><span>Scan the QR and download. Your PIN closes after that.</span></li>
@@ -322,23 +322,11 @@
   <div class="screen" id="scrBg">
     <div>
       <h2>Choose your theme</h2>
-      <p class="lede">This is the backdrop your collage is printed on. It also sets whether
-        the collage comes out portrait or landscape.</p>
+      <p class="lede">Your three AI photos go straight into the frames on this poster.
+        Pick portrait or landscape.</p>
     </div>
     <div class="scroller"><div class="grid2" id="bgGrid"></div></div>
-    <button class="btn" id="bgNext" disabled onclick="go('scrLayout')">
-      Choose layout <svg class="icon"><use href="#i-right"/></svg>
-    </button>
-  </div>
-
-  <!-- 3 ── LAYOUT ────────────────────────────────────────── -->
-  <div class="screen" id="scrLayout">
-    <div>
-      <h2>Choose your layout</h2>
-      <p class="lede" id="layoutLede">How your three AI photos sit on the collage.</p>
-    </div>
-    <div class="scroller"><div class="grid2" id="layoutGrid"></div></div>
-    <button class="btn" id="layoutNext" disabled onclick="startShot(0)">
+    <button class="btn" id="bgNext" disabled onclick="startShot(0)">
       Start shot 1 <svg class="icon"><use href="#i-right"/></svg>
     </button>
   </div>
@@ -678,8 +666,12 @@ const POSTER_LAYOUTS = [
 
 /** Accepts POSTER-PORTRAIT / POSTER-LANDSCAPE (or the ids) from the sheet. */
 function posterLayoutFor(theme){
-  const v = String(theme && theme.layout || '').trim().toLowerCase();
-  if (!v) return null;
+  if (!theme) return null;
+  let v = String(theme.layout || '').trim().toLowerCase();
+  // No Layout column needed: a theme with poster artwork gets the poster
+  // frames for its orientation automatically. Colour-only themes do not.
+  if (!v && (theme.fileId || theme.url)) v = theme.orientation === 'PORTRAIT' ? 'portrait' : 'landscape';
+  if (!v || v === 'none') return null;
   const id = /port/.test(v) ? 'cpu-portrait' : /land/.test(v) ? 'cpu-landscape' : v;
   return POSTER_LAYOUTS.filter(P => P.id === id)[0] || null;
 }
@@ -848,7 +840,7 @@ function loadConfig(){
 let configPromise = loadConfig().catch(() => {});
 
 /* ══════════════ NAVIGATION ══════════════ */
-const ORDER = ['scrBg','scrLayout','scrSetup','scrCam','scrCheckout','scrDone'];
+const ORDER = ['scrBg','scrSetup','scrCam','scrCheckout','scrDone'];
 
 function go(id, silent){
   const cur = document.querySelector('.screen.active');
@@ -856,7 +848,7 @@ function go(id, silent){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   document.getElementById('back').classList.toggle('on',
-    history.length > 0 && ['scrBg','scrLayout','scrSetup','scrCam'].indexOf(id) !== -1);
+    history.length > 0 && ['scrBg','scrSetup','scrCam'].indexOf(id) !== -1);
   buildSteps();
   window.scrollTo(0,0);
 }
@@ -1002,7 +994,7 @@ function selectTheme(t, card){
       S.bgImage = img;
       const n = document.getElementById('bgNext');
       n.disabled = false;
-      n.innerHTML = 'Choose layout <svg class="icon"><use href="#i-right"/></svg>';
+      n.innerHTML = 'Start shot 1 <svg class="icon"><use href="#i-right"/></svg>';
       buildLayouts();
     })
     .catch(e => {
@@ -1011,7 +1003,7 @@ function selectTheme(t, card){
       // screen with no way forward.
       const n = document.getElementById('bgNext');
       n.disabled = false;
-      n.innerHTML = 'Continue without the backdrop <svg class="icon"><use href="#i-right"/></svg>';
+      n.innerHTML = 'Start without the poster <svg class="icon"><use href="#i-right"/></svg>';
       buildLayouts();
       alert('That backdrop could not load, so the collage will use a plain panel. ' +
             'Tell the staff if this keeps happening.\n\n(' + e.message + ')');
@@ -1145,54 +1137,15 @@ function loadImage(src){
   });
 }
 
-/* ══════════════ LAYOUTS ══════════════ */
+/* ══════════════ LAYOUT — automatic, no layout screen ══════════════
+ * A poster theme puts the photos exactly where the sample photos sit on the
+ * poster (portrait or landscape). A colour-only theme, if any is left active
+ * in the sheet, falls back to AUTO_LAYOUT in its own orientation. */
+const AUTO_LAYOUT = { portrait:'hero', landscape:'triptych' };
+
 function buildLayouts(){
-  const mode = orientation();
-  document.getElementById('layoutLede').textContent =
-    'How your three AI photos sit on the ' + mode + ' collage.';
-  const g = document.getElementById('layoutGrid');
-  g.innerHTML = '';
-  S.layout = null;
-  document.getElementById('layoutNext').disabled = true;
-
-  // A poster theme has exactly one layout: the photo frames printed on it.
-  const posterL = posterLayoutFor(S.theme);
-  if (posterL){
-    const b = document.createElement('button');
-    b.className = 'pick on';
-    b.innerHTML = '<img alt="" src="' + esc(themeImgUrl(S.theme, 500)) + '">' +
-                  '<span class="t">' + posterL.name + '</span>' +
-                  '<span class="s">' + posterL.blurb + '</span>';
-    g.appendChild(b);
-    S.layout = posterL;
-    document.getElementById('layoutNext').disabled = false;
-    return;
-  }
-
-  LAYOUTS.forEach(L => {
-    const G = geom(L, mode);
-    const b = document.createElement('button');
-    b.className = 'pick';
-    let svg = '<svg class="lay" viewBox="0 0 ' + G.W + ' ' + G.H + '">' +
-      '<rect width="' + G.W + '" height="' + G.H + '" rx="40" fill="#12151d"/>';
-    if (G.bgSlot) svg += '<rect class="bgc" x="' + G.bgSlot[0] + '" y="' + G.bgSlot[1] +
-      '" width="' + G.bgSlot[2] + '" height="' + G.bgSlot[3] + '" rx="22"/>';
-    G.slots.forEach(s => {
-      const rot = s[4] ? ' transform="rotate(' + s[4] + ' ' + (s[0]+s[2]/2) + ' ' + (s[1]+s[3]/2) + ')"' : '';
-      svg += '<rect class="cell" x="' + s[0] + '" y="' + s[1] + '" width="' + s[2] +
-             '" height="' + s[3] + '" rx="22"' + rot + '/>';
-    });
-    svg += '</svg>';
-    b.innerHTML = svg + '<span class="t">' + L.name + '</span>' +
-                  '<span class="s">' + L.blurb + '</span>';
-    b.onclick = () => {
-      document.querySelectorAll('#layoutGrid .pick').forEach(x => x.classList.remove('on'));
-      b.classList.add('on');
-      S.layout = L;
-      document.getElementById('layoutNext').disabled = false;
-    };
-    g.appendChild(b);
-  });
+  S.layout = posterLayoutFor(S.theme) ||
+             LAYOUTS.filter(L => L.id === AUTO_LAYOUT[orientation()])[0] || LAYOUTS[0];
 }
 
 /* ══════════════ SHOT SETUP ══════════════ */
@@ -2228,9 +2181,7 @@ function newCustomer(){
   buildThemes();
   const bgNext = document.getElementById('bgNext');
   bgNext.disabled = true;
-  bgNext.innerHTML = 'Choose layout <svg class="icon"><use href="#i-right"/></svg>';
-  document.getElementById('layoutGrid').innerHTML = '';
-  document.getElementById('layoutNext').disabled = true;
+  bgNext.innerHTML = 'Start shot 1 <svg class="icon"><use href="#i-right"/></svg>';
 
   // Checkout + done screens.
   document.getElementById('jobList').innerHTML = '';
