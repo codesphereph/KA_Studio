@@ -184,6 +184,10 @@
     display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--muted)}
   .shotbar .dot.now{border-color:var(--gold);color:var(--gold)}
   .shotbar .dot.done{background:var(--ok);border-color:var(--ok);color:#0b2418}
+  .shotbar .dot.busy{border-color:var(--gold);color:var(--gold);animation:pulse 1.2s ease-in-out infinite}
+  .shotbar .dot.bad{background:#7f1d1d;border-color:#ef4444;color:#fff}
+  @keyframes pulse{50%{opacity:.45}}
+  .shotbar .bgnote{margin-left:4px}
   .seg{display:flex;gap:7px}
   .seg button{flex:1;padding:13px 0;border:1.5px solid var(--line);border-radius:12px;
     background:var(--surface);color:var(--text);font:700 16px 'Inter',sans-serif;cursor:pointer}
@@ -226,6 +230,8 @@
   .job.ok .ic{background:rgba(52,199,123,.16);color:var(--ok)}
   .job.err .ic{background:rgba(242,85,90,.16);color:var(--bad)}
   .job .m{color:var(--muted);font-size:11.5px}
+  .job .fix{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .job .fix .btn{width:auto;padding:7px 12px;font-size:13px;margin:0}
   .spin{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--gold);
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -869,9 +875,8 @@ function applyConfig(cfg, fromCache){
         ', this page needs v' + NEEDS_API_VERSION + '). In Apps Script: Deploy → ' +
         'Manage deployments → edit → Version: New version → Deploy.');
     }
-    if (!CFG.themes.length) warn.push('No themes are set up yet. Run initializeSheet() from ' +
-      'the spreadsheet, or give each Themes row either a Drive link or a Color like #14161F.');
-    if (!CFG.characters.length) warn.push('No characters are set up yet. Fill the Characters sheet.');
+    // No "no themes" warning: the Centralian Fest posters are always available.
+    if (aiOn() && !CFG.characters.length) warn.push('No characters are set up yet. Fill the Characters sheet.');
     if (warn.length && !fromCache){
       const el = document.getElementById('landingWarn');
       el.style.display = 'block'; el.textContent = warn.join(' ');
@@ -1219,12 +1224,28 @@ function buildLayouts(){
 
 /* ══════════════ SHOT SETUP ══════════════ */
 function shotBarHtml(active){
-  let h = '';
+  let h = '', note = '';
   for (let i = 0; i < CFG.shots; i++){
-    const cls = i < active ? 'done' : i === active ? 'now' : '';
-    h += '<span class="dot ' + cls + '">' + (i < active ? '✓' : (i+1)) + '</span>';
+    const j = S.jobs[i];
+    let cls = '', txt = String(i + 1);
+    if (i === active) cls = 'now';
+    else if (j && j.status === 'ok') { cls = 'done'; txt = '✓'; }
+    else if (j && j.status === 'failed') { cls = 'bad'; txt = '!'; }
+    else if (j && (j.status === 'pending' || j.status === 'retry')) {
+      cls = 'busy';
+      if (!note) note = 'shot ' + (i + 1) + (aiOn() ? ' painting' : ' saving') +
+        (j.t0 ? ' · ' + Math.round((Date.now() - j.t0) / 1000) + 's' : '');
+    }
+    h += '<span class="dot ' + cls + '">' + txt + '</span>';
   }
-  return h + '<span>Shot ' + (active+1) + ' of ' + CFG.shots + '</span>';
+  return h + '<span>Shot ' + (active+1) + ' of ' + CFG.shots + '</span>' +
+    (note ? '<span class="bgnote">· ' + note + '</span>' : '');
+}
+/** Keeps the dots on the setup and camera screens in step with the background work. */
+function refreshShotBars(){
+  const on = id => document.getElementById(id).classList.contains('active');
+  if (on('scrSetup')) document.getElementById('shotBar').innerHTML = shotBarHtml(S.shot);
+  if (on('scrCam')) document.getElementById('camBar').innerHTML = shotBarHtml(S.shot);
 }
 
 /** Settings → AllowAI. Off = photos are kept exactly as taken (no AI, no cost). */
@@ -1241,7 +1262,7 @@ function startShot(i, silent){
                   promise: Promise.resolve(r) };
     S.jobs[i].img = probeCdn(r.fileId).then(() => loadShotImage(r)).catch(() => null);
     S.captured[i] = '';
-    openPaint(i);
+    if (i + 1 < CFG.shots) startShot(i + 1, silent); else goCheckout();
     return;
   }
   if (!aiOn()){
@@ -1676,7 +1697,11 @@ function finishCapture(canvas){
     cd.style.display = 'none';
     cd.classList.remove('go');
     history = [];
-    openPaint(i);
+    // Shots are painted in the background: the group goes straight on to
+    // the next shot. A retake from the checkout screen returns there.
+    if (S.fixing){ S.fixing = false; goCheckout(); }
+    else if (i + 1 < CFG.shots) startShot(i + 1, true);
+    else goCheckout();
   }, 900);
 }
 
@@ -1899,7 +1924,9 @@ function startJob(i, attempt){
 setInterval(() => {
   const on = document.getElementById('scrCheckout').classList.contains('active') ||
              document.getElementById('scrPaint').classList.contains('active');
-  if (on && S.jobs.some(j => j && (j.status === 'pending' || j.status === 'retry'))) paintJobs();
+  const busy = S.jobs.some(j => j && (j.status === 'pending' || j.status === 'retry'));
+  if (on && busy) paintJobs();
+  if (busy) refreshShotBars();
 }, 1000);
 
 function goCheckout(){
@@ -1914,6 +1941,7 @@ function goCheckout(){
 
 function paintJobs(){
   if (document.getElementById('scrPaint').classList.contains('active')) paintShotScreen();
+  refreshShotBars();
   const list = document.getElementById('jobList');
   list.innerHTML = '';
   for (let i = 0; i < CFG.shots; i++){
@@ -1930,15 +1958,54 @@ function paintJobs(){
                   (j.attempt || 1) + ' of ' + MAX_TRIES + ')…'
               : (aiOn() ? 'Painting your scene… ' : 'Saving your photo… ') + (j.t0 ? Math.round((Date.now() - j.t0) / 1000) + 's' : '');
     d.innerHTML = '<span class="ic">' + ic + '</span>' +
-      '<span><b>Shot ' + (i+1) + ' — ' + esc(name) + '</b><br><span class="m">' + msg + '</span></span>';
+      '<span><b>Shot ' + (i+1) + ' — ' + esc(name) + '</b><br><span class="m">' + msg + '</span>' +
+      (j.status === 'failed'
+        ? '<span class="fix"><button class="btn gold slim" data-a="again">Try again</button>' +
+          '<button class="btn quiet slim" data-a="retake">Retake</button>' +
+          (aiOn() ? '<button class="btn quiet slim" data-a="change">Other character</button>' : '') +
+          '</span>'
+        : '') + '</span>';
+    d.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => fixShot(i, b.dataset.a));
     list.appendChild(d);
   }
 }
 
+/** Fix one failed shot from the checkout screen.
+ *  again  = send the same photo again (free if the booth had already made it)
+ *  retake = new photo, same character
+ *  change = new character, new photo */
+function fixShot(i, how){
+  S.shot = i;
+  const j = S.jobs[i];
+  if (how === 'again'){
+    if (j.local) startLocalShot(i);
+    else { j.t0 = Date.now(); j.t1 = 0; startJob(i, 1); }
+    waitForJobs();
+    return;
+  }
+  S.fixing = true;
+  history = [];
+  if (how === 'change' && aiOn()) { S.jobs[i] = null; startShot(i, true); }
+  else openCamera(true);
+}
+
+let waitRun = 0;
 async function waitForJobs(){
-  const mine = S;
-  await Promise.all(S.jobs.map(j => j && j.promise));
-  if (S !== mine) return;         // they moved on to a new PIN meanwhile
+  const mine = S, run = ++waitRun;
+  const warn0 = document.getElementById('checkoutWarn');
+  warn0.style.display = 'none';
+  document.getElementById('finishBtn').disabled = true;
+  if (document.getElementById('checkLede').textContent.indexOf('did not come back') !== -1)
+    document.getElementById('checkLede').textContent = 'Hold on — finishing your photos.';
+  paintJobs();
+  // Wait until nothing is pending (a retry can replace a job's promise).
+  for (;;){
+    await Promise.all(S.jobs.map(j => j && j.promise));
+    if (S !== mine || run !== waitRun) return;
+    if (!S.jobs.some(j => j && (j.status === 'pending' || j.status === 'retry'))) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  if (S !== mine || run !== waitRun) return;         // they moved on to a new PIN meanwhile
   const failed = S.jobs.filter(j => !j || j.status !== 'ok').length;
   const warn = document.getElementById('checkoutWarn');
 
@@ -1946,8 +2013,8 @@ async function waitForJobs(){
     document.getElementById('checkLede').textContent =
       failed + ' of ' + CFG.shots + ' shots did not come back.';
     warn.style.display = 'block';
-    warn.textContent = 'Show this screen to the staff. They can reset your PIN so you can ' +
-      'shoot again at no extra charge.';
+    warn.textContent = 'Nothing is charged for a failed shot. Tap "Try again" on it — if the ' +
+      'booth had already made it, you get it back at no cost — or retake it.';
     document.getElementById('newPinFromCheckout').style.display = 'block';
     return;
   }
