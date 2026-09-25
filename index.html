@@ -44,6 +44,13 @@
     background:var(--surface);color:var(--text);display:none;place-items:center;cursor:pointer
   }
   .top .back.on{display:grid}
+  .top .lock{
+    width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:11px;margin-left:auto;
+    background:var(--surface);color:var(--muted);display:none;place-items:center;cursor:pointer
+  }
+  .top .lock.on{display:grid}
+  .top .lock:hover{color:var(--gold)}
+  .top .lock.on + .steps{margin-left:10px}
   .wordmark{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:.08em;
     text-transform:uppercase;line-height:1}
   .wordmark em{font-style:normal;color:var(--gold)}
@@ -273,6 +280,7 @@
   <g id="i-check"><path d="M20 6L9 17l-5-5"/></g>
   <g id="i-cam"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></g>
   <g id="i-flip"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></g>
+  <g id="i-lock"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></g>
   <g id="i-dl"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></g>
 </defs></svg>
 
@@ -293,6 +301,9 @@
       <svg class="icon"><use href="#i-left"/></svg>
     </button>
     <div class="wordmark" id="wordmark">King Arthur Studio <em>AI Booth</em></div>
+    <button class="lock on" id="adminLock" onclick="openAdminPin()" aria-label="Admin Portal" title="Admin Portal">
+      <svg class="icon"><use href="#i-lock"/></svg>
+    </button>
     <div class="steps" id="steps" aria-hidden="true"></div>
   </div>
 
@@ -449,6 +460,19 @@
 
 </div>
 
+<!-- Admin PIN sheet -->
+<div class="modal" id="adminModal">
+  <div class="sheet">
+    <h2>Admin Portal</h2>
+    <p class="lede">Staff only. Enter the 4-digit admin PIN.</p>
+    <div class="pinbox" id="adminDots"><i></i><i></i><i></i><i></i></div>
+    <p class="note" id="adminMsg">&nbsp;</p>
+    <div class="keypad" id="adminKeypad"></div>
+    <button class="btn gold" id="adminGo" disabled onclick="submitAdminPin()" style="margin-top:12px">Open Admin Portal</button>
+    <button class="btn quiet slim" onclick="closeAdminPin()" style="margin-top:8px">Cancel</button>
+  </div>
+</div>
+
 <!-- PIN sheet -->
 <div class="modal" id="pinModal">
   <div class="sheet">
@@ -468,7 +492,7 @@
    Paste your Apps Script /exec URL below. Same URL as download.html.
    ══════════════════════════════════════════════════════════ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
-const NEEDS_API_VERSION = 29;
+const NEEDS_API_VERSION = 30;
 
 /* ---------- transport ---------- */
 
@@ -847,6 +871,7 @@ function go(id, silent){
   if (cur && !silent) history.push(cur.id);
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  document.getElementById('adminLock').classList.toggle('on', id === 'scrLanding' || id === 'scrClosed');
   document.getElementById('back').classList.toggle('on',
     history.length > 0 && ['scrBg','scrSetup','scrCam'].indexOf(id) !== -1);
   buildSteps();
@@ -951,6 +976,67 @@ async function submitPinInner(btn, attempt){
       if (attempt !== pinAttempt) return;
       btn.disabled = false; pinMsg(e.message, 'err');
     });
+}
+
+/* ══════════════ ADMIN PORTAL ══════════════
+ * The lock icon in the header (landing screen only). The PIN is checked by the
+ * server — it is not in this page — and a correct one returns a short-lived
+ * token that opens Admin.html from the Apps Script web app in a new tab. */
+let adminValue = '';
+(function buildAdminKeypad(){
+  const k = document.getElementById('adminKeypad');
+  ['1','2','3','4','5','6','7','8','9','clear','0','del'].forEach(key => {
+    const b = document.createElement('button');
+    b.className = 'key';
+    b.textContent = key === 'clear' ? '✕' : key === 'del' ? '⌫' : key;
+    b.setAttribute('aria-label', key === 'clear' ? 'Clear' : key === 'del' ? 'Delete' : key);
+    b.onclick = () => {
+      if (key === 'clear') adminValue = '';
+      else if (key === 'del') adminValue = adminValue.slice(0, -1);
+      else if (adminValue.length < 4) adminValue += key;
+      paintAdmin();
+    };
+    k.appendChild(b);
+  });
+})();
+function paintAdmin(msg, cls){
+  const dots = document.getElementById('adminDots').children;
+  for (let i = 0; i < 4; i++){
+    dots[i].textContent = adminValue[i] ? '•' : '';
+    dots[i].className = adminValue[i] ? 'f' : '';
+  }
+  document.getElementById('adminGo').disabled = adminValue.length !== 4;
+  const m = document.getElementById('adminMsg');
+  m.innerHTML = msg ? esc(msg) : '&nbsp;';
+  m.className = 'note ' + (cls || '');
+}
+function openAdminPin(){
+  adminValue = ''; paintAdmin();
+  document.getElementById('adminModal').classList.add('on');
+}
+function closeAdminPin(){
+  adminValue = '';
+  document.getElementById('adminModal').classList.remove('on');
+}
+async function submitAdminPin(){
+  const btn = document.getElementById('adminGo');
+  btn.disabled = true;
+  // Open the tab now, while the tap still counts as a user action — a tab
+  // opened after the server answers would be blocked as a pop-up.
+  let tab = null;
+  try { tab = window.open('', '_blank'); } catch (e) {}
+  paintAdmin('Checking…');
+  try {
+    const r = await api('adminLogin', { pin: adminValue });
+    const url = API_URL + '?page=admin&t=' + encodeURIComponent(r.token);
+    closeAdminPin();
+    if (tab && !tab.closed) tab.location.href = url;
+    else location.href = url;               // pop-ups blocked: open it here instead
+  } catch (e) {
+    if (tab && !tab.closed) tab.close();
+    adminValue = '';
+    paintAdmin(e.message, 'err');
+  }
 }
 
 /* ══════════════ BACKGROUNDS ══════════════ */
@@ -2092,37 +2178,82 @@ function roundRect(ctx, x, y, w, h, r){
 }
 
 /* ══════════════ FINISH ══════════════ */
-function finish(){
+/**
+ * Saves the collage, then shows the QR and the files.
+ *
+ * The done screen used to trust the server's reply blindly: when a reply came
+ * back without pin / qrUrl (an old deployment, or Google handing back the wrong
+ * page), the customer got a blank PIN, a broken QR (the browser requested
+ * "undefined" — the 404) and no files. Now every field has a fallback, and the
+ * screen only opens once the photos are confirmed on the server.
+ */
+function qrFor(url){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=8&data=' +
+         encodeURIComponent(url);
+}
+function downloadPageFor(pin){
+  const base = CFG.downloadBase ||
+    (function(){ try { return new URL('download.html', location.href).href; } catch(e){ return ''; } })();
+  return base ? base + (base.indexOf('?') === -1 ? '?' : '&') + 'pin=' + pin : '';
+}
+
+async function finish(){
   const btn = document.getElementById('finishBtn');
+  const w = document.getElementById('checkoutWarn');
   btn.disabled = true;
   btn.textContent = 'Saving your collage…';
+  w.style.display = 'none';
   const collage = document.getElementById('collage').toDataURL('image/jpeg', .9);
 
-  api('finishSession', {
-    sessionId: S.sessionId, deviceId: DEVICE, collageDataUrl: collage,
-    layoutName: S.layout.name, themeName: S.theme ? S.theme.name : ''
-  })
-  .then(d => {
+  try {
+    let d = null;
+    try {
+      d = await api('finishSession', {
+        sessionId: S.sessionId, deviceId: DEVICE, collageDataUrl: collage,
+        layoutName: S.layout.name, themeName: S.theme ? S.theme.name : ''
+      });
+    } catch (e) {
+      // The save may have gone through even though the reply was lost —
+      // the check below decides. Only give up if it did not.
+      d = null;
+      var saveErr = e;
+    }
+    if (!d || typeof d !== 'object') d = {};
+    const pin = String(d.pin || S.pin || '');
+
+    // Confirm the photos really are there (and get the file list).
+    let p = null;
+    for (let t = 0; t < 3; t++){
+      try { p = await api('getPhotosByPin', { pin: pin }); } catch (e) { p = null; }
+      if (p && p.items && p.items.some(it => it.kind === 'COLLAGE')) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    const items = (p && p.items) || [];
+    if (!items.some(it => it.kind === 'COLLAGE')){
+      throw saveErr || new Error('The collage did not reach the booth. Check the wifi and tap the button again.');
+    }
+
     S.done = true;
-    document.getElementById('thankYou').textContent = d.thankYou;
-    document.getElementById('qrImg').src = d.qrUrl;
-    document.getElementById('donePin').textContent = d.pin;
-    return api('getPhotosByPin', { pin: d.pin });
-  })
-  .then(p => {
+    const dl = d.downloadUrl || downloadPageFor(pin);
+    document.getElementById('thankYou').textContent =
+      d.thankYou || 'Salamat! Your AI photos are ready — scan or tap to download.';
+    const qr = document.getElementById('qrImg');
+    const qrSrc = d.qrUrl || (dl ? qrFor(dl) : '');
+    qr.parentNode.style.display = qrSrc ? '' : 'none';
+    if (qrSrc) qr.src = qrSrc;
+    document.getElementById('donePin').textContent = pin;
+
     const list = document.getElementById('fileList');
     list.innerHTML = '';
     logHit({ pin: S.pin, sessionId: S.sessionId, deviceId: DEVICE, event: 'OPEN' });
-
-    (p.items || []).forEach(it => {
+    items.forEach(it => {
       const row = document.createElement('div');
       row.className = 'file';
-      row.innerHTML = '<img src="' + it.url + '=w160" alt="">' +
+      row.innerHTML = '<img src="' + esc(it.url) + '=w160" alt="">' +
         '<span class="n">' + esc(it.label) + '</span>' +
         '<a target="_blank" rel="noopener">Download</a>';
       const a = row.querySelector('a');
       a.href = it.downloadUrl;
-      a.textContent = 'Download';
       a.addEventListener('click', () => {
         S.downloaded = true;
         logHit({ pin: S.pin, sessionId: S.sessionId, deviceId: DEVICE, event: 'FILE',
@@ -2131,13 +2262,11 @@ function finish(){
       list.appendChild(row);
     });
     go('scrDone', true);
-  })
-  .catch(e => {
+  } catch (e) {
     btn.disabled = false;
     btn.innerHTML = 'Confirm PIN <span id="checkoutPin">' + S.pin + '</span> and finish';
-    const w = document.getElementById('checkoutWarn');
     w.style.display = 'block'; w.textContent = e.message;
-  });
+  }
 }
 
 function endSession(){
@@ -2197,6 +2326,7 @@ function newCustomer(){
   fb.innerHTML = 'Confirm PIN <span id="checkoutPin"></span> and finish';
   document.getElementById('fileList').innerHTML = '';
   document.getElementById('qrImg').removeAttribute('src');
+  document.getElementById('qrImg').parentNode.style.display = '';
   document.getElementById('donePin').textContent = '';
 
   document.getElementById('paintImg').dataset.shown = '';
