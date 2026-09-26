@@ -714,7 +714,15 @@ const LAYOUTS = [
  *           stay on top, exactly as on the poster. */
 const POSTER_LAYOUTS = [
   { id:'cpu-portrait', name:'Centralian Fest poster', blurb:'Your 3 photos in the poster',
-    poster:true, src:'P', img:CPU_POSTER_PORTRAIT, shapes:['wide','tall','wide'], srcW:1024, srcH:1536, W:1400, H:2100, border:14,
+    poster:true, src:'P', img:CPU_POSTER_PORTRAIT, shapes:['wide','tall','wide'],
+    // Clean design: a frosted panel hides the sample photos, and three straight
+    // frames (each exactly its photo's shape, so nothing is cropped) sit on it
+    // with even margins and equal gaps. [x, y, w, h] in poster pixels.
+    panel:{ y0:425, y1:1300, fadeTop:48, tint:'rgba(238,245,255,.84)',
+            // follows the top edge of the "Central Spirit" ribbon and the swooshes
+            clip:[[0,420],[1024,420],[1024,1174],[962,1196],[905,1216],[800,1219],[700,1222],[560,1229],
+                  [350,1231],[250,1234],[150,1247],[100,1238],[60,1214],[0,1180]] },
+    frames:[ [30,501,479,327], [533,501,461,679], [30,852,479,327] ], srcW:1024, srcH:1536, W:1400, H:2100, border:14,
     slots:[ [[-12,498],[572,455],[524,905],[12,948]],        // shot 1 · top left
             [[548,452],[1060,498],[1040,1000],[520,955]],    // shot 2 · top right
             [[42,858],[993,941],[1008,1255],[13,1230]] ],    // shot 3 · bottom, wide
@@ -739,6 +747,8 @@ const POSTER_LAYOUTS = [
   //    so border is 0 and a 10px white frame is drawn around each one.
   { id:'cpu2-portrait', name:'Centralian Fest poster · Style 2', blurb:'Your 3 photos in the poster',
     poster:true, src:'P2', img:CPU2_POSTER_PORTRAIT, srcW:1024, srcH:1536, W:1400, H:2100,
+    panel:{ y0:0, y1:930, fadeBottom:20, tint:'rgba(250,251,253,.9)' },
+    frames:[ [80,40,563,832], [667,40,277,404], [667,468,277,404] ],
     border:0, frame:10, shapes:['tall','tall','tall'],          // all portrait
     slots:[ [[29,43],[546,28],[563,850],[43,869]],             // shot 1 · big, left
             [[593,31],[994,24],[994,463],[593,455]],           // shot 2 · top right
@@ -899,6 +909,56 @@ function shotSize(i){
   return sh === 'wide' ? '1536x1024' : sh === 'square' ? '1024x1024' : '1024x1536';
 }
 
+/** A soft, frosted band across the poster where its sample photos were: the
+ *  poster itself, heavily blurred and whitened, fading out at its edges. */
+function drawFrostedPanel(x, bg, L){
+  const P = L.panel, w = L.srcW, h = P.y1 - P.y0;
+  // blur = shrink to a few pixels and stretch back (works on every phone)
+  const tiny = document.createElement('canvas');
+  tiny.width = 16; tiny.height = Math.max(6, Math.round(16 * h / w));
+  tiny.getContext('2d').drawImage(bg, 0, P.y0 / L.srcH * bg.height, bg.width, h / L.srcH * bg.height,
+                                  0, 0, tiny.width, tiny.height);
+  const band = document.createElement('canvas');
+  band.width = w; band.height = h;
+  const b = band.getContext('2d');
+  b.imageSmoothingEnabled = true;
+  b.drawImage(tiny, 0, 0, w, h);
+  b.fillStyle = P.tint || 'rgba(255,255,255,.8)';
+  b.fillRect(0, 0, w, h);
+  // soft edges where the band meets the poster
+  if (P.fadeTop || P.fadeBottom){
+    b.globalCompositeOperation = 'destination-in';
+    const gr = b.createLinearGradient(0, 0, 0, h);
+    const t = (P.fadeTop || 0) / h, u = 1 - (P.fadeBottom || 0) / h;
+    gr.addColorStop(0, P.fadeTop ? 'rgba(0,0,0,0)' : '#000');
+    gr.addColorStop(Math.max(0.0001, t), '#000');
+    gr.addColorStop(Math.min(0.9999, u), '#000');
+    gr.addColorStop(1, P.fadeBottom ? 'rgba(0,0,0,0)' : '#000');
+    b.fillStyle = gr; b.fillRect(0, 0, w, h);
+  }
+  x.drawImage(band, 0, P.y0);
+}
+
+/** One photo in a white frame with a soft shadow. The frame has the photo's
+ *  own shape, so the whole photo shows. */
+function drawCleanFrame(x, img, f, border){
+  const [fx, fy, fw, fh] = f;
+  x.save();
+  x.shadowColor = 'rgba(15,23,42,.28)'; x.shadowBlur = 18; x.shadowOffsetY = 6;
+  x.fillStyle = '#fff';
+  roundRect(x, fx, fy, fw, fh, 6); x.fill();
+  x.restore();
+  const ix = fx + border, iy = fy + border, iw = fw - 2 * border, ih = fh - 2 * border;
+  const s = Math.max(iw / img.width, ih / img.height);          // same shape: a perfect fit
+  const dw = img.width * s, dh = img.height * s;
+  x.save();
+  x.beginPath(); x.rect(ix, iy, iw, ih); x.clip();
+  x.drawImage(img, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+  x.restore();
+  x.strokeStyle = 'rgba(15,23,42,.08)'; x.lineWidth = 1;
+  x.strokeRect(ix + .5, iy + .5, iw - 1, ih - 1);
+}
+
 async function buildPosterCollage(L){
   const cv = document.getElementById('collage');
   cv.width = L.W; cv.height = L.H;
@@ -908,6 +968,24 @@ async function buildPosterCollage(L){
   x.drawImage(bg, 0, 0, L.W, L.H);
 
   const imgs = await collageImages();
+
+  if (L.frames){
+    x.save();
+    x.scale(k, k);
+    x.save();
+    if (L.panel.clip){ polyPath(x, L.panel.clip); x.clip(); }
+    drawFrostedPanel(x, bg, L);
+    x.restore();
+    L.frames.forEach((f, i) => {
+      const img = imgs[i];
+      if (img) drawCleanFrame(x, img, f, 12);
+    });
+    x.restore();
+    const out0 = cv.toDataURL('image/jpeg', .9);
+    const prev0 = document.getElementById('collagePreview');
+    prev0.src = out0; prev0.style.display = 'block';
+    return out0;
+  }
 
   x.save();
   x.scale(k, k);
@@ -1660,7 +1738,7 @@ function useCamButtons(){
 function placeFrameGuide(){
   const g = document.getElementById('frameGuide');
   const L = S.layout;
-  if (!L || !L.poster || !L.slots[S.shot]){ g.style.display = 'none'; return; }
+  if (!L || !L.poster || !L.slots[S.shot] || L.frames){ g.style.display = 'none'; return; }
   const a = slotAspect((L.fit && L.fit[S.shot]) || insetQuad(L.slots[S.shot], L.border));
   const PHOTO = shotShape(S.shot) === 'tall' ? 2 / 3 : 1.5, FOCUS_Y = 0.40;
   let l = 0, t = 0, w = 1, h = 1;
