@@ -1744,7 +1744,8 @@ function useCamButtons(){
 function placeFrameGuide(){
   const g = document.getElementById('frameGuide');
   const L = S.layout;
-  if (!L || !L.poster || !L.slots[S.shot] || L.frames){ g.style.display = 'none'; return; }
+  // Frame-style posters (frames, no slots) show the whole photo, so no guide.
+  if (!L || !L.poster || L.frames || !L.slots || !L.slots[S.shot]){ g.style.display = 'none'; return; }
   const a = slotAspect((L.fit && L.fit[S.shot]) || insetQuad(L.slots[S.shot], L.border));
   const PHOTO = shotShape(S.shot) === 'tall' ? 2 / 3 : 1.5, FOCUS_Y = 0.40;
   let l = 0, t = 0, w = 1, h = 1;
