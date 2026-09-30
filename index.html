@@ -345,8 +345,8 @@
     <div class="marquee">
       <div class="bulbs"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
       <h1>King Arthur<span>AI Studio</span></h1>
-      <p class="tag" id="tagline">Three photos on your own phone. AI writes you into the story.</p>
-      <div class="price" id="priceBig">₱200<small id="priceNote">3 high-resolution AI photos + 1 collage, by QR download</small></div>
+      <p class="tag" id="tagline">Two photos on your own phone. AI writes you into the story.</p>
+      <div class="price" id="priceBig">₱150<small id="priceNote">2 high-resolution AI photos + 1 collage · download on your phone, no prints</small></div>
     </div>
 
     <ul class="how">
@@ -379,7 +379,7 @@
   <div class="screen" id="scrLayout">
     <div>
       <h2>Choose your layout</h2>
-      <p class="lede" id="layoutLede">How your three AI photos sit on the collage.</p>
+      <p class="lede" id="layoutLede">How your two AI photos sit on the collage.</p>
     </div>
     <div class="scroller"><div class="grid2" id="layoutGrid"></div></div>
     <button class="btn" id="layoutNext" disabled onclick="startShot(0)">
@@ -547,7 +547,10 @@ const CPU_THUMB_LANDSCAPE = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/
    Paste your Apps Script /exec URL below. Same URL as download.html.
    ══════════════════════════════════════════════════════════ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
-const NEEDS_API_VERSION = 27;
+const NEEDS_API_VERSION = 28;
+/* The package: 2 AI photos + 1 collage. Fixed here as well as on the server, so
+   a phone holding an old cached config (or an older server) still shoots 2. */
+const SHOTS = 2;
 
 /* ---------- transport ---------- */
 
@@ -648,8 +651,8 @@ function deviceId(){
 const DEVICE = deviceId();
 
 /* ---------- state ---------- */
-let CFG = { boothTitle:'King Arthur AI Studio', countdown:10, shots:3,
-            price:'₱200', themes:[], characters:[] };
+let CFG = { boothTitle:'King Arthur AI Studio', countdown:10, shots:SHOTS,
+            price:'₱150', themes:[], characters:[] };
 let S = {
   pin:null, sessionId:null,
   theme:null, bgImage:null, layout:null,
@@ -670,100 +673,89 @@ let history = [];
 const CANVAS = { landscape:{W:2100,H:1500}, portrait:{W:1500,H:2100} };
 
 const LAYOUTS = [
-  { id:'triptych', name:'Triptych', blurb:'Three equal panels',
-    slots:[[95,95,600,1180],[750,95,600,1180],[1405,95,600,1180]],
+  { id:'duo', name:'Side by Side', blurb:'Two equal panels',
+    slots:[[95,95,940,1180],[1065,95,940,1180]],
     title:{x:1050,y:1420,size:58},
-    portrait:{ slots:[[95,95,1310,550],[95,690,1310,550],[95,1285,1310,550]],
+    portrait:{ slots:[[95,95,1310,850],[95,995,1310,850]],
                title:{x:750,y:1985,size:58} } },
 
-  { id:'hero', name:'Headliner', blurb:'One big, two beside it',
-    slots:[[95,95,1170,1180],[1290,95,715,560],[1290,715,715,560]],
+  { id:'hero', name:'Headliner', blurb:'One big, one beside it',
+    slots:[[95,95,1240,1180],[1375,245,630,880]],
     title:{x:1050,y:1420,size:58},
-    portrait:{ slots:[[95,95,1310,1090],[95,1225,630,630],[775,1225,630,630]],
+    portrait:{ slots:[[95,95,1310,1180],[345,1320,810,560]],
                title:{x:750,y:1985,size:58} } },
 
-  { id:'strip', name:'Filmstrip', blurb:'Stacked wide bands',
-    slots:[[150,90,1800,380],[150,520,1800,380],[150,950,1800,380]],
+  { id:'strip', name:'Photo Strip', blurb:'Two stacked frames',
+    slots:[[540,70,1020,620],[540,720,1020,620]],
     title:{x:1050,y:1430,size:52},
-    portrait:{ slots:[[110,110,1280,545],[110,715,1280,545],[110,1320,1280,545]],
+    portrait:{ slots:[[160,110,1180,800],[160,970,1180,800]],
                title:{x:750,y:1990,size:52} } },
 
   { id:'marquee', name:'Marquee', blurb:'Backdrop gets its own panel', mat:'#FFFFFF',
     bgSlot:[95,95,880,1195],
-    slots:[[1005,95,1000,365],[1005,505,1000,365],[1005,915,1000,365]],
+    slots:[[1005,95,1000,570],[1005,720,1000,570]],
     title:{x:1050,y:1420,size:52},
     portrait:{ bgSlot:[95,95,1310,690],
-               slots:[[95,820,1310,385],[95,1255,625,600],[780,1255,625,600]],
+               slots:[[95,820,625,1035],[780,820,625,1035]],
                title:{x:750,y:1990,size:52} } },
 
-  { id:'polaroid', name:'Polaroid Toss', blurb:'Tilted prints, scattered', polaroid:true,
-    slots:[[165,420,540,540,-6],[780,360,540,540,4],[1395,430,540,540,-3]],
+  { id:'polaroid', name:'Polaroid Pair', blurb:'Two tilted prints', polaroid:true,
+    slots:[[250,300,700,700,-5],[1150,270,700,700,4]],
     title:{x:1050,y:1370,size:76,script:true},
-    portrait:{ slots:[[150,340,530,530,-6],[820,300,530,530,5],[485,1090,530,530,-3]],
-               title:{x:750,y:1900,size:76,script:true} } },
+    portrait:{ slots:[[190,230,700,700,-5],[610,960,700,700,4]],
+               title:{x:750,y:1960,size:76,script:true} } },
 ];
 
 /* ══════════════ CENTRALIAN FEST POSTER LAYOUTS ══════════════
- * The customer's three photos go exactly where the sample photos sit on the
+ * The customer's two photos go where the sample photos sit on the
  * poster. Coordinates are in the poster image's own pixels; each slot is the
  * four corners of the white frame (top-left, top-right, bottom-right,
  * bottom-left) because the poster frames are slightly tilted.
- *   slots — in shot order (shot 1, 2, 3 = reading order on the poster)
+ *   slots — in shot order (shot 1, 2 = reading order on the poster)
  *   draw  — stacking order, so the frames overlap the way the poster does
  *   zone  — area the photos may cover; the banners and swooshes outside it
  *           stay on top, exactly as on the poster. */
 const POSTER_LAYOUTS = [
-  { id:'cpu-portrait', name:'Centralian Fest poster', blurb:'Your 3 photos in the poster',
-    poster:true, src:'P', img:CPU_POSTER_PORTRAIT, shapes:['wide','tall','wide'],
-    // Clean design: a frosted panel hides the sample photos, and three straight
-    // frames (each exactly its photo's shape, so nothing is cropped) sit on it
-    // with even margins and equal gaps. [x, y, w, h] in poster pixels.
+  { id:'cpu-portrait', name:'Centralian Fest poster', blurb:'Your 2 photos in the poster',
+    poster:true, src:'P', img:CPU_POSTER_PORTRAIT, shapes:['tall','tall'],
+    // Clean design: a frosted panel hides the sample photos, and two straight
+    // portrait frames (each exactly its photo's shape, so nothing is cropped)
+    // sit side by side on it. [x, y, w, h] in poster pixels.
     panel:{ y0:425, y1:1300, fadeTop:48, tint:'rgba(238,245,255,.84)',
             // follows the top edge of the "Central Spirit" ribbon and the swooshes
             clip:[[0,420],[1024,420],[1024,1174],[962,1196],[905,1216],[800,1219],[700,1222],[560,1229],
                   [350,1231],[250,1234],[150,1247],[100,1238],[60,1214],[0,1180]] },
-    frames:[ [30,501,479,327], [533,501,461,679], [30,852,479,327] ], srcW:1024, srcH:1536, W:1400, H:2100, border:14,
-    slots:[ [[-12,498],[572,455],[524,905],[12,948]],        // shot 1 · top left
-            [[548,452],[1060,498],[1040,1000],[520,955]],    // shot 2 · top right
-            [[42,858],[993,941],[1008,1255],[13,1230]] ],    // shot 3 · bottom, wide
-    // Parts of the frames sit under a neighbour, the ribbon or the page edge, as
-    // on the poster. Each photo is fitted WHOLE into the part that stays visible.
-    fit:[ null, [[576,462],[1018,502],[1018,942],[532,902]], null ],
-    draw:[1, 0, 2],
-    zone:[[0,452],[480,452],[560,458],[700,458],[1024,452],[1024,1145],[890,1240],
-          [700,1247],[400,1247],[150,1236],[0,1168]] },
-  // Measured on the live cpu_landscape.jpg (720x405). Slots are the OUTER edge
-  // of each poster frame; frame:4 draws our white frame a little beyond it so
-  // the sample photos and their borders are fully hidden.
-  { id:'cpu-landscape', name:'Centralian Fest poster', blurb:'Your 3 photos in the poster',
-    poster:true, src:'L', img:CPU_POSTER_LANDSCAPE, shapes:['wide','tall','wide'],
+    frames:[ [30,480,470,693], [524,480,470,693] ], srcW:1024, srcH:1536, W:1400, H:2100, border:14 },
+  // Measured on the live cpu_landscape.jpg (720x405). The poster prints three
+  // sample photos; hide lists them so they are papered over, and the two new
+  // slots (outer frame edges, tilted opposite ways) cover that whole area.
+  { id:'cpu-landscape', name:'Centralian Fest poster', blurb:'Your 2 photos in the poster',
+    poster:true, src:'L', img:CPU_POSTER_LANDSCAPE, shapes:['tall','tall'],
     srcW:720, srcH:405, W:2100, H:1181, border:4, frame:4,
-    slots:[ [[439,58],[628,40],[640,159],[455,178]],          // shot 1 · top (wide)
-            [[568,154],[714,169],[688,353],[541,337]],        // shot 2 · right (portrait, on top)
-            [[415,186],[576,161],[574,274],[427,291]] ],      // shot 3 · middle left (wide)
-    draw:[0, 2, 1],
+    hide:[ [[439,58],[628,40],[640,159],[455,178]],
+           [[568,154],[714,169],[688,353],[541,337]],
+           [[415,186],[576,161],[574,274],[427,291]] ],
+    slots:[ [[428,30],[581,42],[560,310],[407,298]],          // shot 1 · left (portrait)
+            [[537,59],[700,51],[715,341],[552,349]] ],        // shot 2 · right (portrait, on top)
+    draw:[0, 1],
     zone:[[0,0],[720,0],[720,405],[0,405]] },
-  // ── Style 2. Slots are the photo areas themselves (inside the white border),
-  //    so border is 0 and a 10px white frame is drawn around each one.
-  { id:'cpu2-portrait', name:'Centralian Fest poster · Style 2', blurb:'Your 3 photos in the poster',
+  // ── Style 2.
+  { id:'cpu2-portrait', name:'Centralian Fest poster · Style 2', blurb:'Your 2 photos in the poster',
     poster:true, src:'P2', img:CPU2_POSTER_PORTRAIT, srcW:1024, srcH:1536, W:1400, H:2100,
     panel:{ y0:0, y1:930, fadeBottom:20, tint:'rgba(250,251,253,.9)' },
-    frames:[ [80,40,563,832], [667,40,277,404], [667,468,277,404] ],
-    border:0, frame:10, shapes:['tall','tall','tall'],          // all portrait
-    slots:[ [[29,43],[546,28],[563,850],[43,869]],             // shot 1 · big, left
-            [[593,31],[994,24],[994,463],[593,455]],           // shot 2 · top right
-            [[599,483],[993,504],[974,888],[581,864]] ],       // shot 3 · bottom right
-    draw:[0, 1, 2],
-    zone:[[0,0],[1024,0],[1024,1536],[0,1536]] },
-  { id:'cpu2-landscape', name:'Centralian Fest poster · Style 2', blurb:'Your 3 photos in the poster',
+    frames:[ [30,110,470,693], [524,110,470,693] ],
+    border:0, frame:10, shapes:['tall','tall'] },               // both portrait
+  { id:'cpu2-landscape', name:'Centralian Fest poster · Style 2', blurb:'Your 2 photos in the poster',
     poster:true, src:'L2', img:CPU2_POSTER_LANDSCAPE, srcW:1536, srcH:1024, W:2100, H:1400,
-    border:11, frame:7, shapes:['wide','wide','wide'],          // all landscape
-    // Measured on the live cpu2_landscape.jpg. Outer frame edges; our white
-    // frame is drawn a little beyond them so no sample photo or border shows.
-    slots:[ [[227,567],[561,517],[591,801],[261,835]],         // shot 1 · left
-            [[581,596],[956,596],[956,827],[584,829]],         // shot 2 · middle, on top
-            [[977,519],[1351,587],[1311,863],[941,801]] ],     // shot 3 · right
-    draw:[0, 2, 1],
+    border:11, frame:7, shapes:['wide','wide'],                 // both landscape
+    // The three sample photos (measured on the live cpu2_landscape.jpg) are
+    // papered over, and two larger tilted frames cover the same strip.
+    hide:[ [[227,567],[561,517],[591,801],[261,835]],
+           [[581,596],[956,596],[956,827],[584,829]],
+           [[977,519],[1351,587],[1311,863],[941,801]] ],
+    slots:[ [[212,505],[776,460],[804,815],[240,860]],         // shot 1 · left
+            [[803,464],[1371,518],[1337,872],[769,818]] ],     // shot 2 · right, on top
+    draw:[0, 1],
     zone:[[0,0],[1536,0],[1536,1024],[0,1024]] },
 ];
 
@@ -902,6 +894,14 @@ function shotShape(i){
   // Each poster says which shots are portrait (2:3) and which landscape (3:2).
   const L = S.layout;
   if (L && L.shapes && L.shapes[i]) return L.shapes[i];
+  // Plain layouts: the shape nearest the slot, so the photo fills its frame.
+  if (L && L.slots && !L.poster){
+    const sl = geom(L).slots[i];
+    if (sl){
+      const a = sl[2] / sl[3];
+      return a > 1.15 ? 'wide' : a < 0.87 ? 'tall' : 'square';
+    }
+  }
   return i === 1 ? 'tall' : 'wide';
 }
 function shotSize(i){
@@ -990,6 +990,11 @@ async function buildPosterCollage(L){
   x.save();
   x.scale(k, k);
   polyPath(x, L.zone); x.clip();
+  // The poster's own sample photos: covered in plain white, so any edge the
+  // new photos do not reach reads as another print lying underneath.
+  (L.hide || []).forEach(q => {
+    x.fillStyle = '#fff'; polyPath(x, insetQuad(q, -(L.frame || 3))); x.fill();
+  });
   L.draw.forEach(i => {
     const img = imgs[i];
     if (!img) return;
@@ -1033,7 +1038,7 @@ let CONFIG_READY = false;
  * Next time the page opens they are used straight away, and the fresh copy
  * from the server replaces them quietly in the background. A cold Apps Script
  * can take several seconds to answer — nobody should stare at a blank page. */
-const CFG_KEY = 'asb_cfg_v1';
+const CFG_KEY = 'asb_cfg_v2';   // v2 = the 2-shot package; old 3-shot caches are ignored
 function cachedConfig(){
   try { const c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); return c && c.themes ? c : null; }
   catch(e){ return null; }
@@ -1058,9 +1063,10 @@ function applyConfig(cfg, fromCache){
     CONFIG_READY = true;
     document.getElementById('landingWarn').style.display = 'none';
     CFG = Object.assign(CFG, cfg);
+    CFG.shots = SHOTS;               // every layout below has exactly two photo slots
     document.title = CFG.boothTitle;
     document.getElementById('wordmark').textContent = CFG.boothTitle;
-    document.getElementById('priceBig').firstChild.nodeValue = CFG.price || '₱200';
+    document.getElementById('priceBig').firstChild.nodeValue = CFG.price || '₱150';
     document.getElementById('priceNote').textContent = CFG.priceNote || '';
     document.getElementById('pinHint').textContent = CFG.pinInstructions || '';
     document.getElementById('cdLabel').textContent = CFG.countdown;
@@ -1374,7 +1380,7 @@ function loadImage(src){
 function buildLayouts(){
   const mode = orientation();
   document.getElementById('layoutLede').textContent =
-    'How your three AI photos sit on the ' + mode + ' collage.';
+    'How your two AI photos sit on the ' + mode + ' collage.';
   const g = document.getElementById('layoutGrid');
   g.innerHTML = '';
   S.layout = null;
@@ -2311,7 +2317,7 @@ async function waitForJobs(){
   }
 
   warn.style.display = 'none';
-  document.getElementById('checkLede').textContent = 'All three are done. Here is your collage.';
+  document.getElementById('checkLede').textContent = 'Both are done. Here is your collage.';
   try{
     await buildCollage();
     document.getElementById('finishBtn').disabled = false;
@@ -2414,7 +2420,7 @@ function loadFromCdn(fileId, width){
   });
 }
 
-/* Loads the three painted photos for the collage. If the phone lost track of
+/* Loads the two painted photos for the collage. If the phone lost track of
  * one (a dropped reply, a page that was switched away from, an old server
  * answer), it is fetched back from the Photos sheet by PIN — the picture is
  * already in Drive, so nobody has to shoot or pay again. */
@@ -2500,7 +2506,7 @@ async function buildCollage(){
     x.restore();
   }
 
-  // the three AI shots
+  // the two AI shots
   // Usually already downloaded while the later shots were painting.
   const imgs = await collageImages();
   for (let i = 0; i < G.slots.length; i++){
