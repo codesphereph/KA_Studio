@@ -729,16 +729,18 @@ const POSTER_LAYOUTS = [
   // Measured on the live cpu_landscape.jpg (720x405). The poster prints three
   // sample photos; hide lists them so they are papered over, and the two new
   // slots (outer frame edges, tilted opposite ways) cover that whole area.
+  // Measured on the live cpu_landscape.jpg (720x405). A frosted card covers the
+  // poster's three sample photos; its top-left corner steps in so the end of
+  // "WEEK" and the "Fest" brush stay visible. Two straight portrait frames sit
+  // side by side on it with a gap — they never overlap.
   { id:'cpu-landscape', name:'Centralian Fest poster', blurb:'Your 2 photos in the poster',
     poster:true, src:'L', img:CPU_POSTER_LANDSCAPE, shapes:['tall','tall'],
-    srcW:720, srcH:405, W:2100, H:1181, border:4, frame:4,
-    hide:[ [[439,58],[628,40],[640,159],[455,178]],
-           [[568,154],[714,169],[688,353],[541,337]],
-           [[415,186],[576,161],[574,274],[427,291]] ],
-    slots:[ [[428,30],[581,42],[560,310],[407,298]],          // shot 1 · left (portrait)
-            [[537,59],[700,51],[715,341],[552,349]] ],        // shot 2 · right (portrait, on top)
-    draw:[0, 1],
-    zone:[[0,0],[720,0],[720,405],[0,405]] },
+    srcW:720, srcH:405, W:2100, H:1181, cleanBorder:4,
+    card:{ poly:[[426,32],[717,32],[717,358],[413,358],[413,185],[426,185]],
+           tint:'rgba(240,246,255,.86)' },
+    // [x, y, w, h]. Slightly narrower than 2:3, so the camera shows a guide
+    // box for where to stand; nothing outside it is lost.
+    frames:[ [432,67,135,256], [576,67,135,256] ] },
   // ── Style 2.
   { id:'cpu2-portrait', name:'Centralian Fest poster · Style 2', blurb:'Your 2 photos in the poster',
     poster:true, src:'P2', img:CPU2_POSTER_PORTRAIT, srcW:1024, srcH:1536, W:1400, H:2100,
@@ -939,6 +941,38 @@ function drawFrostedPanel(x, bg, L){
   x.drawImage(band, 0, P.y0);
 }
 
+/** A frosted card in any outline (poster units): a blurred, tinted copy of
+ *  the poster behind it, with a soft shadow and a thin light edge. */
+function drawFrostedCard(x, bg, L){
+  const C = L.card;
+  const xs = C.poly.map(p => p[0]), ys = C.poly.map(p => p[1]);
+  const bx = Math.min.apply(null, xs), by = Math.min.apply(null, ys);
+  const bw = Math.max.apply(null, xs) - bx, bh = Math.max.apply(null, ys) - by;
+  const tiny = document.createElement('canvas');
+  tiny.width = 16; tiny.height = Math.max(6, Math.round(16 * bh / bw));
+  tiny.getContext('2d').drawImage(bg,
+    bx / L.srcW * bg.width, by / L.srcH * bg.height, bw / L.srcW * bg.width, bh / L.srcH * bg.height,
+    0, 0, tiny.width, tiny.height);
+
+  x.save();
+  x.shadowColor = 'rgba(15,23,42,.25)'; x.shadowBlur = 22; x.shadowOffsetY = 5;
+  x.fillStyle = '#fff'; polyPath(x, C.poly); x.fill();
+  x.restore();
+
+  x.save();
+  polyPath(x, C.poly); x.clip();
+  x.imageSmoothingEnabled = true;
+  x.drawImage(tiny, bx, by, bw, bh);
+  x.fillStyle = C.tint || 'rgba(255,255,255,.85)';
+  x.fillRect(bx, by, bw, bh);
+  x.restore();
+
+  x.save();
+  polyPath(x, C.poly);
+  x.strokeStyle = 'rgba(255,255,255,.95)'; x.lineWidth = 1.2; x.stroke();
+  x.restore();
+}
+
 /** One photo in a white frame with a soft shadow. The frame has the photo's
  *  own shape, so the whole photo shows. */
 function drawCleanFrame(x, img, f, border){
@@ -972,13 +1006,17 @@ async function buildPosterCollage(L){
   if (L.frames){
     x.save();
     x.scale(k, k);
-    x.save();
-    if (L.panel.clip){ polyPath(x, L.panel.clip); x.clip(); }
-    drawFrostedPanel(x, bg, L);
-    x.restore();
+    if (L.card){
+      drawFrostedCard(x, bg, L);
+    } else {
+      x.save();
+      if (L.panel.clip){ polyPath(x, L.panel.clip); x.clip(); }
+      drawFrostedPanel(x, bg, L);
+      x.restore();
+    }
     L.frames.forEach((f, i) => {
       const img = imgs[i];
-      if (img) drawCleanFrame(x, img, f, 12);
+      if (img) drawCleanFrame(x, img, f, L.cleanBorder || 12);
     });
     x.restore();
     const out0 = cv.toDataURL('image/jpeg', .9);
@@ -1745,8 +1783,14 @@ function placeFrameGuide(){
   const g = document.getElementById('frameGuide');
   const L = S.layout;
   // Frame-style posters (frames, no slots) show the whole photo, so no guide.
-  if (!L || !L.poster || L.frames || !L.slots || !L.slots[S.shot]){ g.style.display = 'none'; return; }
-  const a = slotAspect((L.fit && L.fit[S.shot]) || insetQuad(L.slots[S.shot], L.border));
+  let a;
+  if (L && L.poster && L.frames && L.frames[S.shot]){
+    // Straight frames: the guide shows what the frame keeps of the photo.
+    const f = L.frames[S.shot], b = L.cleanBorder || 12;
+    a = (f[2] - 2 * b) / (f[3] - 2 * b);
+  } else if (L && L.poster && L.slots && L.slots[S.shot]){
+    a = slotAspect((L.fit && L.fit[S.shot]) || insetQuad(L.slots[S.shot], L.border));
+  } else { g.style.display = 'none'; return; }
   const PHOTO = shotShape(S.shot) === 'tall' ? 2 / 3 : 1.5, FOCUS_Y = 0.40;
   let l = 0, t = 0, w = 1, h = 1;
   if (a > PHOTO){ h = PHOTO / a; t = Math.min(1 - h, Math.max(0, FOCUS_Y - h / 2)); }
