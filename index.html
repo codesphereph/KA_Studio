@@ -392,7 +392,11 @@
     <div class="shotbar" id="shotBar"></div>
     <div>
       <h2 id="setupTitle">Shot 1</h2>
-      <p class="lede" id="setupLede">One character for the whole group. This is what the AI makes.</p>
+      <p class="lede" id="setupLede">Choose an original photo or an AI character for this shot.</p>
+    </div>
+    <div id="kindArea">
+      <p class="who">How would you like this photo?</p>
+      <div class="modeseg" id="kindSeg"></div>
     </div>
     <div id="castArea">
       <p class="who">Pick one character — everybody becomes it</p>
@@ -551,6 +555,8 @@ const NEEDS_API_VERSION = 29;
 /* The package: 2 AI photos + 1 collage. Fixed here as well as on the server, so
    a phone holding an old cached config (or an older server) still shoots 2. */
 const SHOTS = 2;
+/** The no-AI choice. Declared up here: the config code below uses it at startup. */
+const ORIGINAL_ID = 'original';
 
 /* ---------- transport ---------- */
 
@@ -1102,6 +1108,11 @@ function applyConfig(cfg, fromCache){
     document.getElementById('landingWarn').style.display = 'none';
     CFG = Object.assign(CFG, cfg);
     CFG.shots = SHOTS;               // every layout below has exactly two photo slots
+    // "Original Photo" is offered as its own first choice, so it is taken out
+    // of the character list. With AI switched off it is the only choice.
+    CFG.characters = CFG.characters || [];
+    CFG.offerOriginal = !aiOn() || CFG.characters.some(c => c.id === ORIGINAL_ID);
+    CFG.characters = CFG.characters.filter(c => c.id !== ORIGINAL_ID);
     document.title = CFG.boothTitle;
     document.getElementById('wordmark').textContent = CFG.boothTitle;
     document.getElementById('priceBig').firstChild.nodeValue = CFG.price || '₱150';
@@ -1497,7 +1508,6 @@ function aiOn(){ return CFG.aiEnabled !== false; }
 
 /* "Original Photo" is a character like any other in the list, but choosing
    it skips the AI: the photo is saved exactly as taken, at no AI cost. */
-const ORIGINAL_ID = 'original';
 function isOriginalShot(i){
   const st = S.setup && S.setup[i];
   return !!st && (st.mode === 'original' || st.characterId === ORIGINAL_ID);
@@ -1519,13 +1529,8 @@ function startShot(i, silent){
     if (i + 1 < CFG.shots) startShot(i + 1, silent); else goCheckout();
     return;
   }
-  if (!aiOn()){
-    // No character to choose: straight to the camera.
-    S.setup[i] = { characterId: '', characterName: 'Photo ' + (i + 1), mode: 'original' };
-    openCamera(silent);
-    return;
-  }
-  if (!S.setup[i]) S.setup[i] = { characterId:null, characterName:'', mode:'full' };
+  // Every shot starts on the setup screen: Original Photo or AI character first.
+  if (!S.setup[i]) S.setup[i] = { characterId:null, characterName:'', mode:'full', kind:null };
   document.getElementById('shotBar').innerHTML = shotBarHtml(i);
   document.getElementById('setupTitle').textContent = 'Shot ' + (i+1);
   document.getElementById('setupNum').textContent = (i+1);
@@ -1538,7 +1543,71 @@ function buildShotSetup(){
   buildModeSeg(cur);
   buildLookCombo();
   buildCharBrowse();
+  buildKindSeg(cur);
   refreshSetupNext();
+}
+
+/* ── Step one of every shot: Original Photo or AI Character ── */
+const KINDS = [
+  { id:'original', title:'Original Photo',
+    desc:'Your photo exactly as taken \u2014 no AI, nothing changed.' },
+  { id:'ai', title:'AI Character',
+    desc:'Become a character: new costume and scene, your own faces.' },
+];
+
+function buildKindSeg(cur){
+  const area = document.getElementById('kindArea');
+  const seg = document.getElementById('kindSeg');
+  // Older server with no Original option: straight to the characters, as before.
+  if (!CFG.offerOriginal){ area.style.display = 'none'; cur.kind = 'ai'; applyKind(cur); return; }
+  area.style.display = '';
+  if (!cur.kind && cur.characterId)               // coming back to a shot already set up
+    cur.kind = cur.characterId === ORIGINAL_ID ? 'original' : 'ai';
+  if (!aiOn() && cur.kind === 'ai') cur.kind = null;
+  seg.innerHTML = '';
+  KINDS.forEach(k => {
+    const off = k.id === 'ai' && !aiOn();
+    const b = document.createElement('button');
+    b.className = cur.kind === k.id ? 'on' : '';
+    b.dataset.kind = k.id;
+    b.innerHTML = '<span class="tick">\u2713</span><span><b>' + k.title + '</b>' +
+      '<span class="d">' + (off ? 'Not available at this event.' : k.desc) + '</span></span>';
+    if (off){ b.disabled = true; b.style.opacity = .45; }
+    else b.onclick = () => setKind(cur, k.id);
+    seg.appendChild(b);
+  });
+  applyKind(cur);
+}
+
+function setKind(cur, id){
+  cur.kind = id;
+  if (id === 'original'){
+    cur.characterId = ORIGINAL_ID; cur.characterName = 'Original Photo'; cur.mode = 'original';
+  } else {
+    if (cur.characterId === ORIGINAL_ID){
+      cur.characterId = null; cur.characterName = '';
+      const input = document.getElementById('lookInput');
+      if (input) input.value = '';
+      document.getElementById('lookCombo').classList.remove('picked');
+    }
+    if (cur.mode === 'original') cur.mode = 'full';
+  }
+  document.querySelectorAll('#kindSeg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.kind === id));
+  applyKind(cur);
+  refreshSetupNext();
+}
+
+/** Shows the character search only once "AI Character" is chosen. */
+function applyKind(cur){
+  const ai = cur.kind === 'ai';
+  document.getElementById('castArea').style.display = ai ? '' : 'none';
+  document.getElementById('charBrowse').style.display = ai ? '' : 'none';
+  document.getElementById('setupLede').textContent =
+    !cur.kind ? 'Choose an original photo or an AI character for this shot.'
+    : ai ? 'One character for the whole group. This is what the AI makes.'
+    : 'Your photo is saved exactly as taken. Tap Take shot when you are ready.';
+  if (ai) syncModeSeg(cur);
 }
 
 /**
@@ -1618,6 +1687,7 @@ function pickCharacter(c){
   const cur = S.setup[S.shot];
   cur.characterId = c.id;
   cur.characterName = c.name;
+  cur.kind = c.id === ORIGINAL_ID ? 'original' : 'ai';
   if (c.id === ORIGINAL_ID) cur.mode = 'original';
   else if (cur.mode === 'original') cur.mode = 'full';
   syncModeSeg(cur);
@@ -1762,7 +1832,10 @@ function highlight(text, needle){
 }
 
 function refreshSetupNext(){
-  document.getElementById('setupNext').disabled = !S.setup[S.shot].characterId;
+  const cur = S.setup[S.shot] || {};
+  const ready = cur.kind === 'original' ||
+    (cur.kind === 'ai' && cur.characterId && cur.characterId !== ORIGINAL_ID);
+  document.getElementById('setupNext').disabled = !ready;
 }
 
 /* ══════════════ CAMERA ══════════════ */
