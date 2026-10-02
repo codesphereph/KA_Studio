@@ -547,7 +547,7 @@ const CPU_THUMB_LANDSCAPE = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/
    Paste your Apps Script /exec URL below. Same URL as download.html.
    ══════════════════════════════════════════════════════════ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbx7dZluvAUVRS_bDzJFZDoxsU8IwAayzRUw42lTjV_Y0M42zKj66GshQxbMv8Tddj_G/exec';
-const NEEDS_API_VERSION = 28;
+const NEEDS_API_VERSION = 29;
 /* The package: 2 AI photos + 1 collage. Fixed here as well as on the server, so
    a phone holding an old cached config (or an older server) still shoots 2. */
 const SHOTS = 2;
@@ -1495,6 +1495,16 @@ function refreshShotBars(){
 /** Settings → AllowAI. Off = photos are kept exactly as taken (no AI, no cost). */
 function aiOn(){ return CFG.aiEnabled !== false; }
 
+/* "Original Photo" is a character like any other in the list, but choosing
+   it skips the AI: the photo is saved exactly as taken, at no AI cost. */
+const ORIGINAL_ID = 'original';
+function isOriginalShot(i){
+  const st = S.setup && S.setup[i];
+  return !!st && (st.mode === 'original' || st.characterId === ORIGINAL_ID);
+}
+/** Is THIS shot going through the AI? */
+function shotAi(i){ return aiOn() && !isOriginalShot(i); }
+
 function startShot(i, silent){
   S.shot = i;
   const kept = S.kept && S.kept[i + 1];
@@ -1546,6 +1556,16 @@ const MODES = [
     desc:'Keep the clothes you are wearing now. Only the scene around you changes.' },
 ];
 
+/** The background/costume choice means nothing for an Original Photo. */
+function syncModeSeg(cur){
+  const seg = document.getElementById('modeSeg');
+  if (!seg) return;
+  const orig = cur.mode === 'original';
+  seg.style.display = orig ? 'none' : '';
+  if (!orig) Array.prototype.forEach.call(seg.children, (b, k) =>
+    b.classList.toggle('on', MODES[k] && MODES[k].id === cur.mode));
+}
+
 function buildModeSeg(cur){
   const seg = document.getElementById('modeSeg');
   seg.innerHTML = '';
@@ -1562,6 +1582,7 @@ function buildModeSeg(cur){
     };
     seg.appendChild(b);
   });
+  syncModeSeg(cur);
 }
 
 /** The browse list under the search box, grouped by category. */
@@ -1597,6 +1618,9 @@ function pickCharacter(c){
   const cur = S.setup[S.shot];
   cur.characterId = c.id;
   cur.characterName = c.name;
+  if (c.id === ORIGINAL_ID) cur.mode = 'original';
+  else if (cur.mode === 'original') cur.mode = 'full';
+  syncModeSeg(cur);
   const input = document.getElementById('lookInput');
   if (input) input.value = c.name;
   document.getElementById('lookCombo').classList.add('picked');
@@ -2033,7 +2057,7 @@ function finishCapture(canvas){
   // Fresh job with its own captureId. Asking the server again with the SAME id
   // can never cost a second picture; only a new photo (a retake) gets a new id.
   S.jobs[i] = { captureId: 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };
-  if (aiOn()) startJob(i); else startLocalShot(i);
+  if (shotAi(i)) startJob(i); else startLocalShot(i);
 
   setTimeout(() => {
     cd.style.display = 'none';
@@ -2056,7 +2080,7 @@ function openPaint(i){
   const kept = S.jobs[i] && S.jobs[i].kept;
   document.getElementById('paintTitle').textContent = kept
     ? 'Shot ' + (i + 1) + ' is already done'
-    : (aiOn() ? 'Painting shot ' : 'Saving shot ') + (i + 1);
+    : (shotAi(i) ? 'Painting shot ' : 'Saving shot ') + (i + 1);
   document.getElementById('paintLede').textContent = (i + 1 < CFG.shots)
     ? 'Hold on — shot ' + (i + 2) + ' starts as soon as this one is done.'
     : 'Last one! Your collage is next.';
@@ -2122,9 +2146,9 @@ function paintShotScreen(){
     status.className = 'job';
     ic.innerHTML = '<span class="spin"></span>';
     T.textContent = j.status === 'retry' ? 'Booth is busy — trying again…'
-                  : (aiOn() ? 'Painting your scene…' : 'Saving your photo…');
+                  : (shotAi(i) ? 'Painting your scene…' : 'Saving your photo…');
     M.textContent = secs + 's' + (j.status === 'retry' ? ' · attempt ' + (j.attempt || 1) +
-      ' of ' + MAX_TRIES : (aiOn() ? ' · usually under a minute' : ' · a few seconds'));
+      ' of ' + MAX_TRIES : (shotAi(i) ? ' · usually under a minute' : ' · a few seconds'));
     warn.style.display = 'none';
     next.style.display = 'none';
     retake.style.display = 'none';
@@ -2298,7 +2322,7 @@ function paintJobs(){
               : j.status === 'failed' ? esc(j.error || 'Failed')
               : j.status === 'retry' ? 'Booth is busy — waiting and retrying (' +
                   (j.attempt || 1) + ' of ' + MAX_TRIES + ')…'
-              : (aiOn() ? 'Painting your scene… ' : 'Saving your photo… ') + (j.t0 ? Math.round((Date.now() - j.t0) / 1000) + 's' : '');
+              : (shotAi(i) ? 'Painting your scene… ' : 'Saving your photo… ') + (j.t0 ? Math.round((Date.now() - j.t0) / 1000) + 's' : '');
     d.innerHTML = '<span class="ic">' + ic + '</span>' +
       '<span><b>Shot ' + (i+1) + ' — ' + esc(name) + '</b><br><span class="m">' + msg + '</span>' +
       (j.status === 'failed'
@@ -2476,7 +2500,7 @@ async function collageImages(){
     const j = S.jobs[i] || {};
     let img = null;
     try { img = await (j.img || Promise.resolve(null)); } catch(e){ img = null; }
-    if (!img && S.captured[i] && (j.local || !aiOn())){
+    if (!img && S.captured[i] && (j.local || !shotAi(i))){
       try { img = await loadImage(S.captured[i]); } catch(e){ img = null; }   // the phone's own copy
     }
     if (!img && j.result && j.result.fileId){
